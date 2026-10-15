@@ -79,7 +79,7 @@ service.register("getSetupInfo", function (message) {
   // Under scripts/dev-server.js there is no TV: the sign-in screen runs in
   // this PC's browser and signs in through a bookmark, with the setup
   // server on loopback.
-  if (process.env.F1HUD_DEV) {
+  if (process.env.LIGHTSOUT_DEV) {
     return message.respond({
       returnValue: true,
       dev: true,
@@ -350,5 +350,5 @@ service.register("liveTimingTrackMap", function (message) {
 });
 
 process.on("uncaughtException", function (err) {
-  console.error("[f1hud.service] uncaughtException:", (err && err.stack) || err);
+  console.error("[lightsout.service] uncaughtException:", (err && err.stack) || err);
 });

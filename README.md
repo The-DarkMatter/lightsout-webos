@@ -1,4 +1,4 @@
-# F1 HUD
+# Lights Out for F1 TV
 
 An F1 TV player for LG webOS TVs, installed through the
 [webOS Homebrew Channel](https://www.webosbrew.org/). Watch live sessions and
@@ -6,7 +6,7 @@ replays from your own F1 TV subscription, switch between the world feed and
 the onboard cameras, and bring up a live timing tower and track map over the
 video.
 
-> **Unofficial.** F1 HUD is not affiliated with or endorsed by Formula 1,
+> **Unofficial.** Lights Out is not affiliated with or endorsed by Formula 1,
 > F1 TV or LG. It needs your own F1 TV subscription and plays only what that
 > subscription includes. F1 and F1 TV are trademarks of Formula One
 > Licensing B.V.
@@ -34,14 +34,14 @@ video.
 
 ## Install
 
-Open Homebrew Channel on the TV, find **F1 HUD** and install it.
+Open Homebrew Channel on the TV, find **Lights Out for F1 TV** and install it.
 
 ## Signing in
 
 F1's login page only works in a real browser, so the TV can't log in by
 itself. Instead you hand it a login from a browser, about once a month:
 
-1. Open F1 HUD. The sign-in screen shows a QR code and a pairing code.
+1. Open Lights Out. The sign-in screen shows a QR code and a pairing code.
 2. Scan the QR code with your phone. The page that opens walks you through
    adding a one-time bookmark.
 3. Log in on formula1.com on your phone, then tap that bookmark. The TV
@@ -74,8 +74,8 @@ nobody else on your network can see or change the TV's sign-in.
 
 ## Reporting problems
 
-Open an issue with your TV model, its webOS version, the app version, and
-what happened.
+[Open an issue](https://github.com/The-DarkMatter/lightsout-webos/issues/new/choose)
+with your TV model, its webOS version, the app version, and what happened.
 
 ## How it works
 

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  F1 HUD — webOS TV launcher icon ("Speed One")
+  Lights Out — webOS TV launcher icon ("Speed One")
   Master artwork. Square, full bleed, opaque: webOS rounds the corners itself.
   Render to app/icon.png (80), app/largeIcon.png (130), assets/app-icon.png (512).
   Uses no Formula 1 trademarks, wordmarks or livery.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360"
-     role="img" aria-label="F1 HUD">
-  <title>F1 HUD</title>
+     role="img" aria-label="Lights Out">
+  <title>Lights Out</title>
 
   <!-- Ground: F1 red -->
   <rect width="360" height="360" fill="#E10600"/>

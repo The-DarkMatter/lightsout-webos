@@ -2,7 +2,7 @@
 // written by the player (watch.js), read by the player to resume and by
 // Browse to draw progress bars. Live streams are never recorded.
 
-var RESUME_KEY = "f1hud.resume.v1";
+var RESUME_KEY = "lightsout.resume.v1";
 var RESUME_MAX_ENTRIES = 100;
 var RESUME_MIN_SECONDS = 30; // any earlier counts as not started
 var RESUME_END_MARGIN = 120; // within this of the end counts as finished

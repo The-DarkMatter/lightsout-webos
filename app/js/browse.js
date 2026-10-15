@@ -253,7 +253,7 @@ function rankSessions(sessions, now) {
 
 // Remembers what was focused and how far each row was scrolled, so coming
 // back from the player lands on the same tile (see showTrays).
-var VIEW_KEY = "f1hud.browse.view";
+var VIEW_KEY = "lightsout.browse.view";
 
 function go(contentId) {
   try {
@@ -747,7 +747,7 @@ document.addEventListener("keydown", function (e) {
 // Dev-only URL flags: ?nocache ignores the saved copy, ?skeleton holds the
 // loading skeleton on screen.
 function pageCacheKey() {
-  return "f1hud.browse.page." + currentPageId + ".v1";
+  return "lightsout.browse.page." + currentPageId + ".v1";
 }
 var WEEKEND_REFRESH_MS = 2 * 60 * 1000;
 var DAY_MS = 24 * 3600 * 1000;

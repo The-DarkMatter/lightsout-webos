@@ -317,7 +317,7 @@ video.addEventListener("volumechange", paintVolume);
 // When it's off there's no button for it, so the picture stays edge to edge.
 var debugBtn = document.getElementById("debug-btn");
 try {
-  debugBtn.hidden = window.localStorage.getItem("f1hud.devtools.panel") !== "1";
+  debugBtn.hidden = window.localStorage.getItem("lightsout.devtools.panel") !== "1";
 } catch (e) {
   debugBtn.hidden = true;
 }

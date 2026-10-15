@@ -13,7 +13,7 @@
 function callService(method, parameters) {
   if (window.PalmServiceBridge) {
     return new Promise(function (resolve, reject) {
-      webOS.service.request("luna://com.amogh.f1hud.service", {
+      webOS.service.request("luna://com.thedarkmatter.lightsout.service", {
         method: method,
         parameters: parameters || {},
         onSuccess: resolve,
@@ -21,7 +21,7 @@ function callService(method, parameters) {
       });
     });
   }
-  if (window.F1HUD_MOCKS) return window.F1HUD_MOCKS.respond(method, parameters);
+  if (window.LIGHTSOUT_MOCKS) return window.LIGHTSOUT_MOCKS.respond(method, parameters);
   return fetch("/api/" + method, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

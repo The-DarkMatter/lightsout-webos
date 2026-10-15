@@ -25,7 +25,7 @@ function explainFailure(err) {
       return {
         title: "F1 TV answered unexpectedly",
         text: "F1 TV may have changed something this app relies on. Look for an update in Homebrew Channel, " +
-          "or report it on the app's GitHub page." + said,
+          "or report it at github.com/The-DarkMatter/lightsout-webos/issues." + said,
       };
     default:
       return {

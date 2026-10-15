@@ -147,7 +147,7 @@ function offerToken(token, source) {
   store.set("f1tv_token_saved_at", new Date().toISOString());
   store.set("f1tv_token_source", source);
   console.log(
-    "[f1hud.service] f1tv token updated from " + source +
+    "[lightsout.service] f1tv token updated from " + source +
     ", expires " + new Date(expiryMs(token)).toISOString() +
     ", session until " + (sessionExpiryMs(token) ? new Date(sessionExpiryMs(token)).toISOString() : "unknown")
   );
@@ -192,7 +192,7 @@ function renewRequest(sessionId) {
 function finishRenewal(ok, reason) {
   lastRenewal = { at: new Date().toISOString(), ok: ok, reason: reason || null };
   if (!ok) renewBlockedUntil = Date.now() + RENEW_RETRY_MS;
-  console.log("[f1hud.service] token renewal " + (ok ? "succeeded" : "failed: " + reason));
+  console.log("[lightsout.service] token renewal " + (ok ? "succeeded" : "failed: " + reason));
   return ok;
 }
 
@@ -280,7 +280,7 @@ function probeHomebrew() {
   return execCommand("true", 6000).then(function (p) {
     if (p.returnValue) homebrewAvailable = true;
     else if (!p.timedOut) homebrewAvailable = false;
-    console.log("[f1hud.service] Homebrew Channel exec " + (p.returnValue ? "available" : "unavailable: " + p.errorText));
+    console.log("[lightsout.service] Homebrew Channel exec " + (p.returnValue ? "available" : "unavailable: " + p.errorText));
     return !!homebrewAvailable;
   });
 }
@@ -317,7 +317,7 @@ function readTvBrowser(force) {
 
   // Copy first: the browser may hold the live database open. The copy is
   // private to root, and removed straight after the query.
-  var tmp = "/tmp/f1hud-cookies-" + process.pid + ".db";
+  var tmp = "/tmp/lightsout-cookies-" + process.pid + ".db";
   var command =
     "umask 077; cp '" + BROWSER_COOKIES + "' " + tmp + " 2>/dev/null && " +
     "sqlite3 " + tmp + " \"select value from cookies where host_key like '%formula1.com' " +

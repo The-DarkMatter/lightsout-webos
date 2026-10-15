@@ -13,7 +13,7 @@
 var SEASON_FIRST_YEAR = 2018;
 var THIS_YEAR = new Date().getFullYear();
 var SEASON_REFRESH_MS = 6 * 3600 * 1000;
-var WEEKEND_KEY = "f1hud.browse.weekend"; // sessionStorage: the weekend picked this session
+var WEEKEND_KEY = "lightsout.browse.weekend"; // sessionStorage: the weekend picked this session
 var FALLBACK_PAGE_ID = 12324; // 2026 Spanish GP, if no season list can be had at all
 
 var currentSeason = THIS_YEAR;
@@ -22,7 +22,7 @@ var seasons = {}; // year -> meetings
 // ---- season data ------------------------------------------------------------
 
 function seasonCacheKey(year) {
-  return "f1hud.season." + year + ".v1";
+  return "lightsout.season." + year + ".v1";
 }
 
 function fetchSeason(year) {

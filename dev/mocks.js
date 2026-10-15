@@ -207,4 +207,4 @@ function mockResponse(method, parameters) {
   return result && result.returnValue === false ? Promise.reject(result) : Promise.resolve(result);
 }
 
-window.F1HUD_MOCKS = { respond: mockResponse };
+window.LIGHTSOUT_MOCKS = { respond: mockResponse };

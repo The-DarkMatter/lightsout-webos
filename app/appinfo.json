@@ -1,10 +1,10 @@
 {
-  "id": "com.amogh.f1hud",
+  "id": "com.thedarkmatter.lightsout",
   "version": "0.1.0",
-  "vendor": "amogh",
+  "vendor": "Dark Matter",
   "type": "web",
   "main": "index.html",
-  "title": "F1 HUD",
+  "title": "Lights Out for F1 TV",
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
   "uiRevision": "3",

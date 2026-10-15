@@ -1,6 +1,6 @@
 # Third-party components
 
-F1 HUD itself is licensed under the Apache License 2.0 (see `LICENSE`). It ships
+Lights Out itself is licensed under the Apache License 2.0 (see `LICENSE`). It ships
 the following third-party components, each under its own licence. The licence
 text for each one sits next to it in this repository.
 

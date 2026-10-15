@@ -13,10 +13,10 @@ var path = require("path");
 var CANDIDATE_DIRS = [
   // Set by scripts/dev-server.js so a PC run keeps its own state in the
   // repo's .dev/ folder, never on the TV's paths.
-  process.env.F1HUD_STATE_DIR || null,
-  "/media/internal/f1hud",
-  process.env.HOME ? path.join(process.env.HOME, "f1hud") : null,
-  "/tmp/f1hud", // last resort: doesn't survive reboot, but better than nothing
+  process.env.LIGHTSOUT_STATE_DIR || null,
+  "/media/internal/lightsout",
+  process.env.HOME ? path.join(process.env.HOME, "lightsout") : null,
+  "/tmp/lightsout", // last resort: doesn't survive reboot, but better than nothing
 ];
 
 var STATE_FILE = "state.json";
@@ -50,10 +50,10 @@ function Store() {
     } catch (e) {
       this.data = {};
     }
-    console.log("[f1hud.service] store persisting to", this.file);
+    console.log("[lightsout.service] store persisting to", this.file);
   } else {
     console.warn(
-      "[f1hud.service] WARNING: no writable dir found among",
+      "[lightsout.service] WARNING: no writable dir found among",
       CANDIDATE_DIRS.filter(Boolean).join(", "),
       "- running memory-only, state will not survive a restart"
     );
@@ -80,7 +80,7 @@ Store.prototype._flush = function () {
   try {
     fs.writeFileSync(this.file, JSON.stringify(this.data, null, 2));
   } catch (e) {
-    console.error("[f1hud.service] store flush failed:", e && e.message);
+    console.error("[lightsout.service] store flush failed:", e && e.message);
   }
 };
 

@@ -1,7 +1,7 @@
 {
-  "name": "com.amogh.f1hud.service",
+  "name": "com.thedarkmatter.lightsout.service",
   "version": "0.1.0",
-  "description": "On-TV Node service for the F1 HUD app: F1TV auth/entitlement/playback, live timing ingest, and a proxy layer that avoids webOS's packaged-app CORS restrictions.",
+  "description": "On-TV Node service for the Lights Out app: F1TV auth/entitlement/playback, live timing ingest, and a proxy layer that avoids webOS's packaged-app CORS restrictions.",
   "main": "index.js",
   "license": "Apache-2.0",
   "dependencies": {

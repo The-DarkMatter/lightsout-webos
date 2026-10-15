@@ -17,7 +17,7 @@
 // Log in on formula1.com in this PC's browser, then use the sign-in
 // screen's paste box or bookmark. The token is stored in .dev/state.json
 // (gitignored), not copied from the TV. The TV-browser import is TV-only
-// and reports as unavailable here; F1HUD_DEV_HOMEBREW=1 fakes a rooted TV
+// and reports as unavailable here; LIGHTSOUT_DEV_HOMEBREW=1 fakes a rooted TV
 // to show it.
 
 var fs = require("fs");
@@ -31,9 +31,9 @@ var DEV_DIR = path.join(ROOT, "dev");
 var PORT = Number(process.env.PORT) || 8788;
 var MOCK = process.argv.indexOf("--mock") !== -1;
 
-process.env.F1HUD_STATE_DIR = path.join(ROOT, ".dev");
-process.env.F1HUD_SETUP_HOST = "127.0.0.1";
-process.env.F1HUD_DEV = "1";
+process.env.LIGHTSOUT_STATE_DIR = path.join(ROOT, ".dev");
+process.env.LIGHTSOUT_SETUP_HOST = "127.0.0.1";
+process.env.LIGHTSOUT_DEV = "1";
 
 var handlers = {};
 var setupServer = null;
@@ -51,11 +51,11 @@ function startService() {
   };
   // Only auth.js calls out (Homebrew Channel's exec, for the TV browser
   // import). There's no Luna bus on a PC, so answer the way a missing
-  // service would - or, with F1HUD_DEV_HOMEBREW=1, like a rooted TV whose
+  // service would - or, with LIGHTSOUT_DEV_HOMEBREW=1, like a rooted TV whose
   // browser holds no F1 login, to see the sign-in screen's import controls.
   DevService.prototype.call = function (uri, params, cb) {
     setImmediate(function () {
-      if (process.env.F1HUD_DEV_HOMEBREW === "1") {
+      if (process.env.LIGHTSOUT_DEV_HOMEBREW === "1") {
         return cb({ payload: { returnValue: true, stdoutString: "" } });
       }
       cb({ payload: { returnValue: false, errorText: "dev-server: no Luna bus on this PC (" + uri + ")" } });
@@ -198,11 +198,11 @@ http
   })
   .listen(PORT, "127.0.0.1", function () {
     console.log("");
-    console.log("F1 HUD dev server (" + (MOCK ? "mock data" : "real F1 TV API") + ")");
+    console.log("Lights Out dev server (" + (MOCK ? "mock data" : "real F1 TV API") + ")");
     console.log("  App:     http://localhost:" + PORT + "/browse.html");
     if (!MOCK) {
       console.log("  Sign in: http://localhost:8787/setup?code=" + setupServer.pairingCode());
-      console.log("  State:   " + process.env.F1HUD_STATE_DIR);
+      console.log("  State:   " + process.env.LIGHTSOUT_STATE_DIR);
     }
     console.log("");
   });

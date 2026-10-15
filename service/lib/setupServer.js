@@ -37,7 +37,7 @@ var store = require("./store");
 
 var PORT = 8787;
 var CODE_KEY = "setup_pairing_code";
-var CODE_STORAGE_KEY = "f1hud.setupCode"; // localStorage, on the phone
+var CODE_STORAGE_KEY = "lightsout.setupCode"; // localStorage, on the phone
 var MAX_WRONG_CODES = 5;
 var LOCKOUT_MS = 30 * 1000;
 
@@ -189,7 +189,7 @@ var STYLE =
   "footer{margin-top:40px;font-size:12px;opacity:.55}";
 
 var FOOTER =
-  "<footer>F1 HUD is an unofficial app, not affiliated with or endorsed by Formula 1. It needs your own " +
+  "<footer>Lights Out is an unofficial app, not affiliated with or endorsed by Formula 1. It needs your own " +
   "F1 TV subscription. F1 and F1 TV are trademarks of Formula One Licensing B.V.</footer>";
 
 function pageHead(title) {
@@ -204,10 +204,10 @@ function pageHead(title) {
 // visit goes straight through, unless that stored code was just refused.
 function codePage(problem) {
   return (
-    pageHead("F1 HUD sign-in") +
+    pageHead("Lights Out sign-in") +
     "<h1>Sign the TV in to F1 TV</h1>" +
     (problem ? "<div class='card bad'>" + escapeHtml(problem) + "</div>" : "") +
-    "<p>Enter the code shown on the TV, on the F1 HUD app's sign-in screen.</p>" +
+    "<p>Enter the code shown on the TV, on the Lights Out app's sign-in screen.</p>" +
     "<form method='GET' action='/setup'>" +
     "<input class='code' name='code' inputmode='numeric' autocomplete='off' placeholder='123 456' autofocus><br>" +
     "<button type='submit'>Continue</button></form>" +
@@ -260,7 +260,7 @@ function setupPage(host, message, pairing) {
   var status = auth.status();
   var code = bookmarklet(host);
   return (
-    pageHead("F1 HUD sign-in") +
+    pageHead("Lights Out sign-in") +
     "<h1>Sign the TV in to F1 TV</h1>" +
     (message ? "<div class='card " + (message.saved ? "ok" : "bad") + "'>" + escapeHtml(message.message) + "</div>" : "") +
     statusCard(status) +
@@ -281,7 +281,7 @@ function setupPage(host, message, pairing) {
 
     "<h2>Once a month: sign in</h2>" +
     "<ol>" +
-    "<li>On the TV, open the F1 HUD app's sign-in screen (the gear icon on Browse) and leave it there.</li>" +
+    "<li>On the TV, open the Lights Out app's sign-in screen (the gear icon on Browse) and leave it there.</li>" +
     "<li>On this phone, open <b>formula1.com</b> and log in. Your password manager can fill it in.</li>" +
     "<li>While still on formula1.com, tap the address bar, type <b>Send F1 to TV</b> and tap the bookmark.</li>" +
     "</ol>" +
@@ -319,11 +319,11 @@ function setupPage(host, message, pairing) {
 // again, holding the token in the page meanwhile.
 function receivePage() {
   return (
-    pageHead("F1 HUD sign-in") +
+    pageHead("Lights Out sign-in") +
     "<h1>Sending your sign-in to the TV</h1>" +
     "<div id='result' class='card'>Sending&hellip;</div>" +
     "<form id='ask' style='display:none'>" +
-    "<p>Enter the code shown on the TV, on the F1 HUD app's sign-in screen.</p>" +
+    "<p>Enter the code shown on the TV, on the Lights Out app's sign-in screen.</p>" +
     "<input class='code' id='code' inputmode='numeric' autocomplete='off' placeholder='123 456'><br>" +
     "<button type='submit'>Send</button></form>" +
     "<p><a href='/setup' style='color:#e10600'>Sign-in page</a></p>" +
@@ -343,7 +343,7 @@ function receivePage() {
     "if(r.badCode){try{localStorage.removeItem(K);}catch(e){}return askForCode(r.message);}" +
     "try{localStorage.setItem(K,code);}catch(e){}" +
     "el.className='card '+(r.saved?'ok':'bad');el.textContent=r.message||('Unexpected reply ('+x.status+')');};" +
-    "x.onerror=function(){el.className='card bad';el.textContent='Could not reach the TV. Open the sign-in screen in the F1 HUD app, then tap the bookmark again.';};" +
+    "x.onerror=function(){el.className='card bad';el.textContent='Could not reach the TV. Open the sign-in screen in the Lights Out app, then tap the bookmark again.';};" +
     "x.send(JSON.stringify({token:token,code:code}));}" +
     "ask.onsubmit=function(e){e.preventDefault();var c=input.value.replace(/\\s/g,'');if(c)send(c);};" +
     "var c=stored();if(c)send(c);else askForCode();" +
@@ -416,14 +416,14 @@ function start() {
   });
 
   server.on("error", function (err) {
-    console.error("[f1hud.service] setup server error:", err && err.message);
+    console.error("[lightsout.service] setup server error:", err && err.message);
   });
 
   // scripts/dev-server.js sets 127.0.0.1 so a PC run isn't reachable from
   // the LAN; the TV needs 0.0.0.0 so a phone can reach it.
-  var host = process.env.F1HUD_SETUP_HOST || "0.0.0.0";
+  var host = process.env.LIGHTSOUT_SETUP_HOST || "0.0.0.0";
   server.listen(PORT, host, function () {
-    console.log("[f1hud.service] setup server listening on " + host + ":" + PORT);
+    console.log("[lightsout.service] setup server listening on " + host + ":" + PORT);
   });
 
   return server;

@@ -281,7 +281,7 @@ document.getElementById("page-test-btn").addEventListener("click", function () {
 // Developer toggle: whether the player shows its manual-load panel. Kept in
 // this page's storage rather than the service, since it only changes what a
 // page draws. js/watch.js reads the same key.
-var DEBUG_PANEL_KEY = "f1hud.devtools.panel";
+var DEBUG_PANEL_KEY = "lightsout.devtools.panel";
 
 function debugPanelOn() {
   try {
