@@ -6,12 +6,17 @@
 # Release: bump "version" in app/appinfo.json and service/package.json,
 # commit, then tag v<version> and push the tag. A tag with a hyphen
 # (v0.2.0-beta.1) becomes a pre-release, which releases/latest skips.
+#
+# Run it by hand (Actions > Release > Run workflow) for a dry run: the same
+# build, manifest and compatibility report, kept as the run's artifact and
+# published nowhere.
 
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -39,6 +44,7 @@ jobs:
           sudo apt-get install -y /tmp/toolbox/*.deb
 
       - name: Check the tag matches the version
+        if: github.event_name == 'push'
         run: |
           app=$(node -p "require('./app/appinfo.json').version")
           service=$(node -p "require('./service/package.json').version")
@@ -73,7 +79,15 @@ jobs:
           cat build/compatibility.md >> "$GITHUB_STEP_SUMMARY"
           [ "$code" = 0 ] || [ "$code" = 6 ] || exit "$code"
 
+      - name: Keep the dry run's output
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run
+          path: build/
+
       - name: Publish the release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
