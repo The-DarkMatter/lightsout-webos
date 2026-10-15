@@ -1,0 +1,83 @@
+# Builds the IPK and its Homebrew Channel manifest for a version tag, and
+# publishes both on that tag's GitHub release. The apps-repo entry points
+# at releases/latest/download/<id>.manifest.json, so a new tag reaches
+# users with no change there.
+#
+# Release: bump "version" in app/appinfo.json and service/package.json,
+# commit, then tag v<version> and push the tag. A tag with a hyphen
+# (v0.2.0-beta.1) becomes a pre-release, which releases/latest skips.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install ares-cli
+        run: npm install --global @webos-tools/cli@3.2.6
+
+      - name: Install the webosbrew toolbox
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo webosbrew/dev-toolbox-cli --dir /tmp/toolbox \
+            --pattern 'webosbrew-toolbox-gen-manifest_*_amd64.deb' \
+            --pattern 'webosbrew-toolbox-ipk-verify_*_amd64.deb'
+          sudo apt-get install -y /tmp/toolbox/*.deb
+
+      - name: Check the tag matches the version
+        run: |
+          app=$(node -p "require('./app/appinfo.json').version")
+          service=$(node -p "require('./service/package.json').version")
+          if [ "v$app" != "$GITHUB_REF_NAME" ] || [ "$service" != "$app" ]; then
+            echo "Tag $GITHUB_REF_NAME, appinfo.json $app, service/package.json $service - they must agree." >&2
+            exit 1
+          fi
+
+      - name: Package
+        run: bash scripts/package.sh
+
+      - name: Generate the manifest
+        run: |
+          id=$(node -p "require('./app/appinfo.json').id")
+          webosbrew-toolbox-gen-manifest \
+            -p build/*.ipk \
+            -o "build/$id.manifest.json" \
+            -i "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_REF_NAME/assets/app-icon.png" \
+            -l "https://github.com/$GITHUB_REPOSITORY" \
+            -r optional
+          cat "build/$id.manifest.json"
+
+      # Which firmware releases the package should load on, read from the
+      # package without running it: a hint, not proof. Exit code 6 means some
+      # releases are incompatible, which is a finding rather than a failure.
+      - name: Compatibility report
+        run: |
+          set +e
+          webosbrew-toolbox-ipk-verify -f markdown -d -o build/compatibility.md build/*.ipk
+          code=$?
+          set -e
+          cat build/compatibility.md >> "$GITHUB_STEP_SUMMARY"
+          [ "$code" = 0 ] || [ "$code" = 6 ] || exit "$code"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" build/*.ipk build/*.manifest.json \
+            --title "$GITHUB_REF_NAME" --generate-notes $pre

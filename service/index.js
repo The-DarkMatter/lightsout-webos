@@ -1,11 +1,10 @@
-// On-TV service. Grows across milestones per the plan:
-//   M0: ping (done)
-//   M2: F1TV pairing (this file) - token storage, entitlement/location/PLAY
-//   M4: SignalR-core live timing client
+// On-TV service: F1 TV sign-in and its renewal, the catalogue, playback
+// details, and live and archived timing. The app's pages reach it over the
+// Luna bus (app/js/luna.js).
 //
 // Everything that talks to F1 lives here, never in the page, because F1's
-// endpoints send no CORS headers and a packaged webOS app can't call them
-// directly from the page (see plan doc).
+// endpoints send no CORS headers and a packaged webOS app's pages can't
+// call them directly.
 
 var pkgInfo = require("./package.json");
 var Service = require("webos-service");

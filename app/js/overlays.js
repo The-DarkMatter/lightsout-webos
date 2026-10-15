@@ -14,8 +14,7 @@
 //
 // A pre-drawn circuit outline WAS tried as a backdrop (25 SVGs bundled in
 // the IPK, from github.com/julesr0y/f1-circuits-svg, plus a per-circuit
-// rotation and measured-bounds table - see commits 86c0097 through 72476ed
-// to recover it). Dropped deliberately. The placement math was eventually
+// rotation and measured-bounds table). Dropped deliberately. The placement math was eventually
 // correct - measured offline against the real Madring archive, the drawn
 // outline sat within ~2% of the real telemetry across its whole length -
 // but correct placement can't rescue the underlying mismatch: the live

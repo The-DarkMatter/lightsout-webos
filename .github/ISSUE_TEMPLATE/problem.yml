@@ -1,0 +1,41 @@
+name: Something isn't working
+description: A screen, a video or the sign-in doesn't behave as it should.
+body:
+  - type: input
+    id: tv
+    attributes:
+      label: TV model
+      placeholder: e.g. OLED55C5
+    validations:
+      required: true
+  - type: input
+    id: webos
+    attributes:
+      label: webOS version
+      description: In the TV's settings, under its software or TV information.
+      placeholder: e.g. webOS 25, firmware 33.20.55
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Shown next to the app in Homebrew Channel.
+    validations:
+      required: true
+  - type: dropdown
+    id: root
+    attributes:
+      label: Is the TV rooted?
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead. Include any error message on screen word for word.
+    validations:
+      required: true
