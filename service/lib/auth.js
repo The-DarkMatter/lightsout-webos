@@ -1,21 +1,19 @@
-// F1TV sign-in state: where the subscription token comes from, and whether
-// it's still good.
+// F1TV sign-in state: where the subscription token comes from, whether
+// it's still good, and keeping it fresh.
 //
-// Background (see f1tv.js's header): the service can't log in with a
-// username and password. F1's login page keeps its button disabled until an
-// Imperva bot check (reese84) has run in a real browser, and the service
-// isn't one. So the token always comes from a login a person did in a real
-// browser, and it lasts exactly 96 hours from that login. Nothing found so
-// far renews it: F1's RetrieveSubscriber call accepts the session from the
-// TV but returns account details, not a new token.
+// The service can't log in with a username and password. api.formula1.com's
+// authenticate endpoint answers a plain client with an Imperva "Pardon Our
+// Interruption" block page (403), and that challenge only clears in a real
+// browser. So the token always starts from a login a person did in a real
+// browser.
 //
 // Two ways a token arrives:
 //   - "phone": pushed to the LAN setup server (setupServer.js) by a
 //     bookmarklet run on a logged-in formula1.com page, or pasted there.
 //   - "tv-browser": the TV's own web browser, if someone logged in to
-//     formula1.com there. F1's login page writes the token into a
-//     `login-session` cookie from page script, and this TV is rooted, so
-//     the browser's cookie database can be read - it's stored unencrypted.
+//     formula1.com there. Only on a rooted TV with Homebrew Channel. F1's
+//     login page writes the token into a `login-session` cookie from page
+//     script, and the browser's cookie database stores it unencrypted.
 //     The file is 0600 and owned by the browser's jail user, so this
 //     service can't open it directly; it asks Homebrew Channel's service,
 //     which runs as root and exposes a public `exec` method, to run one
@@ -23,23 +21,15 @@
 //     elevating this whole service to root, and unlike elevation it
 //     survives reinstalling the app.
 //
-// ...and after that the token renews itself, so a browser login is only
-// needed about once a month rather than every four days. Every
-// subscription token carries a `SessionId` claim which is itself a JWT,
-// issued by ascendon.tv, whose life is a fixed 30 days from the login
-// (exp = nbf + 2592000). F1's RetrieveSubscriber mints a brand new 96h
+// A subscription token lasts 96 hours, but it renews itself. Every token
+// carries a `SessionId` claim which is itself a JWT, issued by ascendon.tv,
+// with a much longer life: 30 days from the login, sometimes more (a
+// desktop login has been seen to get about 180), so the session's own
+// `exp` is what counts. F1's RetrieveSubscriber mints a brand new 96h
 // subscription token for whoever presents that session id in a
-// `cd-sessionid` header - but ONLY alongside `orderSubmitted: true`,
-// which is why an earlier probe of the same endpoint (2026-09-14) saw
-// account details come back with no token in them and wrongly concluded
-// there was no renewal path. Verified end to end on 2026-09-18.
-//
-// The renewal call needs no browser, which matters because F1's password
-// login can't be done here at all: api.formula1.com's authenticate
-// endpoint answers a plain client with an Imperva "Pardon Our
-// Interruption" block page (403), and the challenge only clears in a real
-// browser. So a human still has to log in somewhere once per session -
-// the renewal just stretches that to the session's full 30 days.
+// `cd-sessionid` header - but ONLY alongside `orderSubmitted: true`;
+// without it the same call returns account details and no token. The
+// renewal call needs no browser, so one login lasts the whole session.
 //
 // Whichever token stays useful longer wins, so an older import never
 // replaces a fresher login from the other route. "Useful" counts the

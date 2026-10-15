@@ -4,19 +4,19 @@
 # --no-launch installs without pulling the app onto the screen - useful when
 # something else is on the TV right now.
 #
-# The TV is rooted with Homebrew Channel, and LG's Developer Mode app is
-# gone. ares-install/ares-launch still work: they just point at Homebrew's
-# root sshd on port 22 instead of Dev Mode's on 9922. One-time setup:
+# Developer install over SSH, for a TV rooted with Homebrew Channel (users
+# install from Homebrew Channel instead). ares-install/ares-launch work
+# against Homebrew's root sshd on port 22 just as they do against LG's
+# Developer Mode on 9922. One-time setup:
 #   - Homebrew Channel > Settings > SSH server on (it starts at boot, so
 #     reboot after enabling)
-#   - this PC's key in /home/root/.ssh/authorized_keys on the TV
-#   - ares-setup-device -a tv-root -i "username=root" -i "privatekey=f1hud_tv" \
-#       -i "passphrase=" -i "host=192.168.29.100" -i "port=22"
+#   - your SSH public key in /home/root/.ssh/authorized_keys on the TV
+#   - ares-setup-device -a tv-root -i "username=root" -i "privatekey=<key file>" #       -i "passphrase=" -i "host=<TV address>" -i "port=22"
+# The device defaults to "tv-root"; pass another ares device name to override.
 #
 # (Homebrew's own install API, luna://org.webosbrew.hbchannel.service/install,
-# also works but is fussier: it needs an http(s) ipkUrl the TV can reach -
-# Windows Firewall blocks a server on this PC - plus the file's sha256 as
-# ipkHash, or it fails with "Invalid file checksum".)
+# also works but is fussier: it needs an http(s) ipkUrl the TV can reach,
+# plus the file's sha256 as ipkHash, or it fails with "Invalid file checksum".)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -49,8 +49,9 @@ for attempt in 1 2 3 4; do
 done
 
 if [ "$LAUNCH" = "1" ]; then
-  echo "Launching com.amogh.f1hud..."
-  ares-launch -d "$DEVICE" com.amogh.f1hud
+  APP_ID=$(node -p "require('./app/appinfo.json').id")
+  echo "Launching $APP_ID..."
+  ares-launch -d "$DEVICE" "$APP_ID"
 else
   echo "Installed. Not launching (--no-launch passed)."
 fi
