@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Lights Out — webOS TV launcher icon ("Speed One")
+  Lights Out — webOS TV launcher icon ("Gantry over play")
+  Five lit start lights on a hanging gantry, over a play button.
   Master artwork. Square, full bleed, opaque: webOS rounds the corners itself.
   Render to app/icon.png (80), app/largeIcon.png (130), assets/app-icon.png (512).
   Uses no Formula 1 trademarks, wordmarks or livery.
@@ -9,16 +10,30 @@
      role="img" aria-label="Lights Out">
   <title>Lights Out</title>
 
-  <!-- Ground: F1 red -->
-  <rect width="360" height="360" fill="#E10600"/>
+  <!-- Ground -->
+  <rect width="360" height="360" fill="#15151E"/>
 
-  <!-- Slipstream: two bars raked back under the numeral -->
-  <g transform="rotate(-20 180 180)">
-    <rect x="-80" y="198" width="520" height="20" rx="10" fill="#15151E" fill-opacity="0.55"/>
-    <rect x="-80" y="240" width="520" height="20" rx="10" fill="#15151E" fill-opacity="0.32"/>
+  <!-- Gantry: two posts running off the top edge, and the light bar -->
+  <rect x="90" y="-10" width="16" height="70" rx="6" fill="#2C2C38"/>
+  <rect x="254" y="-10" width="16" height="70" rx="6" fill="#2C2C38"/>
+  <rect x="18" y="50" width="324" height="104" rx="26" fill="#2A2A36"/>
+
+  <!-- Five start lights, each with a highlight -->
+  <g fill="#FF2A1F">
+    <circle cx="70" cy="102" r="27"/>
+    <circle cx="125" cy="102" r="27"/>
+    <circle cx="180" cy="102" r="27"/>
+    <circle cx="235" cy="102" r="27"/>
+    <circle cx="290" cy="102" r="27"/>
+  </g>
+  <g fill="#FFFFFF" fill-opacity="0.35">
+    <circle cx="70" cy="94" r="9"/>
+    <circle cx="125" cy="94" r="9"/>
+    <circle cx="180" cy="94" r="9"/>
+    <circle cx="235" cy="94" r="9"/>
+    <circle cx="290" cy="94" r="9"/>
   </g>
 
-  <!-- Numeral one: italic stem + flag -->
-  <path d="M 176 74 L 257 74 L 212 292 L 132 292 Z" fill="#FFFFFF"/>
-  <path d="M 176 74 L 184 111 L 117 150 L 106 113 Z" fill="#FFFFFF"/>
+  <!-- Play -->
+  <path d="M 144 196 Q 144 182 156 189 L 256 247 Q 268 254 256 261 L 156 319 Q 144 326 144 312 Z" fill="#FFFFFF"/>
 </svg>
