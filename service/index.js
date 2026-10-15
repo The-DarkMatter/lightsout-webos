@@ -102,6 +102,15 @@ service.register("getAuthStatus", function (message) {
     });
 });
 
+// The viewer's opt-in for reading the TV browser's formula1.com login (see
+// lib/auth.js). Turning it on looks straight away.
+service.register("setTvBrowserImport", function (message) {
+  var enabled = !!(message.payload && message.payload.enabled);
+  auth.setTvBrowserImport(enabled).then(function () {
+    message.respond(Object.assign({ returnValue: true }, auth.status()));
+  });
+});
+
 service.register("clearToken", function (message) {
   store.delete("f1tv_token");
   store.delete("f1tv_token_saved_at");

@@ -115,6 +115,9 @@ function mockTrackMap() {
   return { drivers: drivers, trail: trail };
 }
 
+// ?tvb=1 previews the TV-browser import already allowed.
+var mockTvBrowserImport = new URLSearchParams(window.location.search).get("tvb") === "1";
+
 var MOCKS = {
   // Offline page data: define MOCK_BROWSE_PAGE in a script loaded before this one.
   f1tvPage: function () {
@@ -137,7 +140,13 @@ var MOCKS = {
       hoursLeft: Math.max(0, hours),
       expiringSoon: hours > 0 && hours < 24,
       source: "phone",
+      // ?root=0 previews a TV without Homebrew Channel.
+      tvBrowserImport: { available: new URLSearchParams(window.location.search).get("root") !== "0", enabled: mockTvBrowserImport },
     };
+  },
+  setTvBrowserImport: function (p) {
+    mockTvBrowserImport = !!(p && p.enabled);
+    return MOCKS.getAuthStatus();
   },
   getSetupInfo: function () {
     return { returnValue: true, lanAddress: "127.0.0.1", setupUrl: "http://127.0.0.1:8787/setup", port: 8787, pairingCode: "482913", hasToken: true, tokenExpiresAt: null };

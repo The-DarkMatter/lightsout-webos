@@ -24,8 +24,10 @@
       #pair-code { display: block; font-family: monospace; font-size: 44px; letter-spacing: 0.12em; color: #f2f2f2; margin-top: 4px; }
       #status { font-size: 26px; padding: 14px 18px; border-radius: 10px; background: #16161a; border: 1px solid #2a2a30; }
       #status.ok { border-color: #1f6b3f; } #status.pending { border-color: #6b5a1f; } #status.fail { border-color: #6b1f1f; }
-      #tv-browser-btn { font-size: 22px; padding: 14px 24px; margin-top: 14px; }
-      #tv-browser-btn:focus, #tv-browser-btn:hover { outline: 3px solid #fff; }
+      #tv-browser button { font-size: 22px; padding: 14px 24px; margin: 14px 12px 0 0; }
+      #tv-browser button.quiet { background: #2a2a30; font-size: 18px; padding: 10px 18px; }
+      #left button:focus, #left button:hover, #left a:focus, #left summary:focus { outline: 3px solid #fff; outline-offset: 2px; }
+      p.note { font-size: 18px; opacity: 0.65; margin-top: 10px; }
       #browse-link { display: none; margin-top: 30px; font-size: 24px; color: #3ddc84; text-decoration: none; }
       .ok { color: #3ddc84; }
       .pending { color: #ffcc00; }
@@ -59,12 +61,21 @@
           for a pairing code, it's the one under the QR code.
         </p>
 
-        <h2>With the TV browser</h2>
-        <p>
-          Log in on formula1.com in the TV's web browser, then come back to
-          this app. It picks the sign-in up on its own.
-        </p>
-        <button id="tv-browser-btn">Open F1 login in the TV browser</button>
+        <div id="tv-browser" style="display:none">
+          <h2>With the TV browser</h2>
+          <p>
+            Log in on formula1.com in the TV's web browser, then come back to
+            this app. It picks the sign-in up on its own.
+          </p>
+          <p id="tv-browser-note" class="note">
+            This needs the app to read the formula1.com login from the TV
+            browser, which it does through Homebrew Channel's root access. It
+            reads that one login and nothing else.
+          </p>
+          <button id="tv-browser-allow">Allow reading the F1 login</button>
+          <button id="tv-browser-btn">Open F1 login in the TV browser</button>
+          <button id="tv-browser-off" class="quiet">Stop reading the TV browser</button>
+        </div>
         </div>
 
         <div id="pc-signin" style="display:none">

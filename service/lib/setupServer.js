@@ -288,9 +288,10 @@ function setupPage(host, message, pairing) {
     "<p>The phone jumps to a confirmation page, and the TV picks the sign-in up within a few seconds.</p>" +
 
     "<h2>Or sign in on the TV itself</h2>" +
-    "<p>Log in to <b>formula1.com</b> in the TV's own web browser, then come back to the app's sign-in " +
-    "screen - it reads that login straight across, and the browser remembers your password for next " +
-    "month. A login already sitting in that browser works too, even an old one.</p>" +
+    "<p>On a TV with Homebrew Channel, the app's sign-in screen can offer to read your login from the " +
+    "TV's own web browser. Allow it there, log in to <b>formula1.com</b> in that browser, then come back " +
+    "to the app - it reads that login straight across, and the browser remembers your password for " +
+    "next month. A login already sitting in that browser works too, even an old one.</p>" +
 
     "<details><summary>Paste a token by hand instead</summary>" +
     "<form method='POST' action='/setup'>" +

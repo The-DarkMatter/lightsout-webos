@@ -1,10 +1,11 @@
 // Sign-in screen. Shows whether the TV has a current F1 TV sign-in, and the
-// two ways to renew it (see service/lib/auth.js for why a username and
-// password can't be used): a QR code to the LAN setup page, which sets up a
-// phone bookmark, and a button that opens F1's login in the TV's own browser.
+// ways to get one (see service/lib/auth.js for why a username and password
+// can't be used): a QR code to the LAN setup page, which sets up a phone
+// bookmark, and - on a TV with Homebrew Channel, once the viewer allows it -
+// a button that opens F1's login in the TV's own browser.
 //
-// Polls getAuthStatus, which also imports a newer login from the TV browser,
-// so either route lands here without pressing anything. The polling is also
+// Polls getAuthStatus, which also imports a newer login from the TV browser
+// when that's allowed, so either route lands here without pressing anything. The polling is also
 // what keeps the service - and the LAN setup page with it - alive while a
 // phone is being used.
 
@@ -59,13 +60,15 @@ function showAuth(res) {
   } else if (res.expired) {
     setStatus("Your sign-in expired " + formatWhen(res.expiresAt) + ". Sign in again below.", "fail");
   } else {
-    setStatus("Not signed in yet. Use either option below.", "fail");
+    setStatus("Not signed in yet.", "fail");
   }
 
   document.getElementById("browse-link").style.display = signedIn ? "inline-block" : "none";
+  showTvBrowserImport(res.tvBrowserImport || {});
   // Something for OK on the remote to press straight away.
   if (!document.activeElement || document.activeElement === document.body) {
-    document.getElementById(signedIn ? "browse-link" : "tv-browser-btn").focus();
+    var first = focusables()[0];
+    if (first) first.focus();
   }
   document.getElementById("play-test").style.display = signedIn ? "block" : "none";
 
@@ -75,6 +78,52 @@ function showAuth(res) {
     setTimeout(function () { window.location.href = "browse.html"; }, 1500);
   }
 }
+
+// The TV-browser route needs Homebrew Channel, and the viewer's say-so
+// before the app reads anything from that browser.
+function showTvBrowserImport(state) {
+  var shown = function (id, on) { document.getElementById(id).style.display = on ? "" : "none"; };
+  shown("tv-browser", state.available);
+  shown("tv-browser-note", !state.enabled);
+  shown("tv-browser-allow", !state.enabled);
+  shown("tv-browser-btn", state.enabled);
+  shown("tv-browser-off", state.enabled);
+}
+
+function setTvBrowserImport(enabled) {
+  callService("setTvBrowserImport", { enabled: enabled })
+    .then(function (res) {
+      showAuth(res);
+      var next = document.getElementById(enabled ? "tv-browser-btn" : "tv-browser-allow");
+      if (next.offsetParent !== null) next.focus();
+    })
+    .catch(function (err) {
+      setStatus("Could not change that setting: " + (err.errorText || JSON.stringify(err)), "fail");
+    });
+}
+
+document.getElementById("tv-browser-allow").addEventListener("click", function () { setTvBrowserImport(true); });
+document.getElementById("tv-browser-off").addEventListener("click", function () { setTvBrowserImport(false); });
+
+// The D-pad's arrows don't move focus by themselves. Up/Down (and
+// Left/Right) step through the controls in page order.
+function focusables() {
+  return Array.prototype.slice
+    .call(document.querySelectorAll("#left a[href], #left button, #left summary"))
+    .filter(function (el) { return el.offsetParent !== null; });
+}
+
+document.addEventListener("keydown", function (e) {
+  var step = { 37: -1, 38: -1, 39: 1, 40: 1 }[e.keyCode];
+  if (!step) return;
+  if (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+  var list = focusables();
+  if (!list.length) return;
+  var i = list.indexOf(document.activeElement);
+  var next = list[Math.max(0, Math.min(list.length - 1, i === -1 ? 0 : i + step))];
+  next.focus();
+  e.preventDefault();
+});
 
 function poll(forceBrowserCheck) {
   callService("getAuthStatus", forceBrowserCheck ? { forceBrowserCheck: true } : {})

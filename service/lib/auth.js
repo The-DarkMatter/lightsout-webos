@@ -20,6 +20,8 @@
 //     read-only sqlite3 query and print just that cookie. That avoids
 //     elevating this whole service to root, and unlike elevation it
 //     survives reinstalling the app.
+//     It's off until the viewer turns it on from the sign-in screen, and
+//     the screen only offers it when Homebrew Channel's service answers.
 //
 // A subscription token lasts 96 hours, but it renews itself. Every token
 // carries a `SessionId` claim which is itself a JWT, issued by ascendon.tv,
@@ -44,6 +46,7 @@ var jwt = require("./jwt");
 var BROWSER_COOKIES = "/var/palm/jail/com.webos.app.browser/mnt/lg/cache/webbrowser/chrome/Cookies";
 var HBCHANNEL_EXEC = "luna://org.webosbrew.hbchannel.service/exec";
 var BROWSER_CHECK_MIN_INTERVAL_MS = 30 * 1000;
+var IMPORT_KEY = "tv_browser_import"; // the viewer's opt-in, stored
 var EXPIRING_SOON_MS = 24 * 3600 * 1000;
 
 // Renewal: F1's account API, not the F1TV one in f1tv.js.
@@ -64,6 +67,9 @@ var RENEW_RETRY_MS = 5 * 60 * 1000;
 var service = null;
 var lastBrowserCheckAt = 0;
 var lastBrowserCheck = null; // {at, found, imported, error} - no token material
+// Whether Homebrew Channel's exec answers: null until asked, then fixed for
+// this service's life. A TV without root never will.
+var homebrewAvailable = null;
 var lastRenewal = null; // {at, ok, reason} - no token material
 var renewInFlight = null;
 var renewBlockedUntil = 0;
@@ -249,8 +255,61 @@ function tokenFromCookieValue(raw) {
   }
 }
 
+function execCommand(command, timeoutMs) {
+  return new Promise(function (resolve) {
+    var done = false;
+    var timer = setTimeout(function () {
+      if (done) return;
+      done = true;
+      resolve({ returnValue: false, timedOut: true, errorText: "timed out" });
+    }, timeoutMs);
+    service.call(HBCHANNEL_EXEC, { command: command }, function (message) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(message.payload || {});
+    });
+  });
+}
+
+// Asks Homebrew Channel's service to run a no-op, once. A timeout leaves
+// the answer open so the next look asks again; a refusal is final.
+function probeHomebrew() {
+  if (!service) return Promise.resolve(false);
+  if (homebrewAvailable !== null) return Promise.resolve(homebrewAvailable);
+  return execCommand("true", 6000).then(function (p) {
+    if (p.returnValue) homebrewAvailable = true;
+    else if (!p.timedOut) homebrewAvailable = false;
+    console.log("[f1hud.service] Homebrew Channel exec " + (p.returnValue ? "available" : "unavailable: " + p.errorText));
+    return !!homebrewAvailable;
+  });
+}
+
+function importEnabled() {
+  return store.get(IMPORT_KEY) === true;
+}
+
+function setTvBrowserImport(enabled) {
+  if (enabled) {
+    store.set(IMPORT_KEY, true);
+    return checkTvBrowser(true);
+  }
+  store.delete(IMPORT_KEY);
+  lastBrowserCheck = null;
+  return Promise.resolve(null);
+}
+
+// Reads the formula1.com login from the TV browser, when the viewer allowed
+// it and Homebrew Channel is there to do the reading.
 function checkTvBrowser(force) {
   if (!service) return Promise.resolve(lastBrowserCheck);
+  return probeHomebrew().then(function (available) {
+    if (!available || !importEnabled()) return null;
+    return readTvBrowser(force);
+  });
+}
+
+function readTvBrowser(force) {
   if (!force && Date.now() - lastBrowserCheckAt < BROWSER_CHECK_MIN_INTERVAL_MS) {
     return Promise.resolve(lastBrowserCheck);
   }
@@ -264,39 +323,25 @@ function checkTvBrowser(force) {
     "sqlite3 " + tmp + " \"select value from cookies where host_key like '%formula1.com' " +
     "and name='login-session' order by expires_utc desc limit 1;\"; rm -f " + tmp;
 
-  return new Promise(function (resolve) {
-    var done = false;
-    var timer = setTimeout(function () {
-      if (done) return;
-      done = true;
-      lastBrowserCheck = { at: new Date().toISOString(), found: false, imported: false, error: "timed out" };
-      resolve(lastBrowserCheck);
-    }, 6000);
-
-    service.call(HBCHANNEL_EXEC, { command: command }, function (message) {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      var p = message.payload || {};
-      if (!p.returnValue) {
-        lastBrowserCheck = { at: new Date().toISOString(), found: false, imported: false, error: p.errorText || "exec failed" };
-        return resolve(lastBrowserCheck);
-      }
-      // A browser that was logged in days ago still holds the token from
-      // that login, expired by now - but its session renews, so it counts
-      // as a find. Before renewal existed this looked like "nothing
-      // happened" to anyone importing from an already-logged-in browser.
-      var token = tokenFromCookieValue(p.stdoutString);
-      var found = !!token && isUsableToken(token);
-      lastBrowserCheck = {
-        at: new Date().toISOString(),
-        found: found,
-        expiresAt: found ? new Date(expiryMs(token)).toISOString() : null,
-        imported: found && offerToken(token, "tv-browser"),
-        error: null,
-      };
-      resolve(lastBrowserCheck);
-    });
+  return execCommand(command, 6000).then(function (p) {
+    if (!p.returnValue) {
+      lastBrowserCheck = { at: new Date().toISOString(), found: false, imported: false, error: p.errorText || "exec failed" };
+      return lastBrowserCheck;
+    }
+    // A browser that was logged in days ago still holds the token from
+    // that login, expired by now - but its session renews, so it counts
+    // as a find. Before renewal existed this looked like "nothing
+    // happened" to anyone importing from an already-logged-in browser.
+    var token = tokenFromCookieValue(p.stdoutString);
+    var found = !!token && isUsableToken(token);
+    lastBrowserCheck = {
+      at: new Date().toISOString(),
+      found: found,
+      expiresAt: found ? new Date(expiryMs(token)).toISOString() : null,
+      imported: found && offerToken(token, "tv-browser"),
+      error: null,
+    };
+    return lastBrowserCheck;
   });
 }
 
@@ -321,6 +366,7 @@ function status() {
     savedAt: store.get("f1tv_token_saved_at") || null,
     source: store.get("f1tv_token_source") || null,
     tvBrowserCheck: lastBrowserCheck,
+    tvBrowserImport: { available: homebrewAvailable === true, enabled: importEnabled() },
   };
 }
 
@@ -332,5 +378,6 @@ module.exports = {
   renew: renew,
   freshToken: freshToken,
   checkTvBrowser: checkTvBrowser,
+  setTvBrowserImport: setTvBrowserImport,
   status: status,
 };

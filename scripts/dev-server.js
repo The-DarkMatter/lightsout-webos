@@ -15,7 +15,7 @@
 // this PC's browser, then use that page's bookmark or paste form, exactly as
 // on a phone. The token is stored in .dev/state.json (gitignored), not
 // copied from the TV. The TV-browser import is TV-only and reports as
-// unavailable here.
+// unavailable here; F1HUD_DEV_HOMEBREW=1 fakes a rooted TV to show it.
 
 var fs = require("fs");
 var http = require("http");
@@ -42,9 +42,13 @@ DevService.prototype.register = function (method, fn) {
 };
 // Only auth.js calls out (Homebrew Channel's exec, for the TV browser
 // import). There's no Luna bus on a PC, so answer the way a missing
-// service would.
+// service would - or, with F1HUD_DEV_HOMEBREW=1, like a rooted TV whose
+// browser holds no F1 login, to see the sign-in screen's import controls.
 DevService.prototype.call = function (uri, params, cb) {
   setImmediate(function () {
+    if (process.env.F1HUD_DEV_HOMEBREW === "1") {
+      return cb({ payload: { returnValue: true, stdoutString: "" } });
+    }
     cb({ payload: { returnValue: false, errorText: "dev-server: no Luna bus on this PC (" + uri + ")" } });
   });
 };
