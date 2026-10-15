@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "On-TV Node service for the F1 HUD app: F1TV auth/entitlement/playback, live timing ingest, and a proxy layer that avoids webOS's packaged-app CORS restrictions.",
   "main": "index.js",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "dependencies": {
     "webos-service": "git+https://github.com/webosose/nodejs-module-webos-service.git#1dd2c9d6cd21eb5d84f7619432ed6d2784bb56f9",
     "ws": "8.21.3"
