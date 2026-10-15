@@ -12,7 +12,6 @@ var Service = require("webos-service");
 var store = require("./lib/store");
 var setupServer = require("./lib/setupServer");
 var f1tv = require("./lib/f1tv");
-var jwt = require("./lib/jwt");
 var livetiming = require("./lib/livetiming");
 var archive = require("./lib/archive");
 var auth = require("./lib/auth");
@@ -103,56 +102,6 @@ service.register("clearToken", function (message) {
   store.delete("f1tv_token_saved_at");
   store.delete("f1tv_token_source");
   message.respond({ returnValue: true });
-});
-
-// M2 probe: exercise the F1TV entitlement/location calls with the stored
-// token and report exactly what came back, so we can fix PLATFORM/LANGUAGE/
-// LOGIN_STATUS guesses in lib/f1tv.js against a real response instead of
-// against documentation.
-service.register("f1tvProbe", function (message) {
-  var token = store.get("f1tv_token");
-  if (!token) {
-    return message.respond({ returnValue: false, errorText: "no token stored" });
-  }
-  var result = { tokenClaims: jwt.decodePayload(token) };
-  f1tv
-    .getEntitlement(token)
-    .then(function (entRes) {
-      result.entitlement = { statusCode: entRes.statusCode, body: entRes.body };
-      // Real shape confirmed: {resultCode, message, resultObj: {entitlementToken}}
-      var entitlementToken = entRes.body && entRes.body.resultObj && entRes.body.resultObj.entitlementToken;
-      if (!entitlementToken) return null;
-      return f1tv.getLocation(entitlementToken).then(function (locRes) {
-        result.location = { statusCode: locRes.statusCode, body: locRes.body };
-      });
-    })
-    .then(function () {
-      message.respond({ returnValue: true, result: result });
-    })
-    .catch(function (err) {
-      message.respond({ returnValue: false, errorText: String(err), result: result });
-    });
-});
-
-// Debug escape hatch: call an arbitrary f1tv.formula1.com path with the
-// stored token attached, for iterating on the unverified endpoint shapes.
-// e.g. parameters: { path: "/2.0/L/ENG/BIG_SCREEN_DASH/ALL/USER/ENTITLEMENT" }
-service.register("f1tvRaw", function (message) {
-  var token = store.get("f1tv_token");
-  var reqPath = message.payload && message.payload.path;
-  if (!reqPath) {
-    return message.respond({ returnValue: false, errorText: "missing 'path' parameter" });
-  }
-  var headers = (message.payload && message.payload.headers) || {};
-  if (token && !headers.ascendontoken) headers.ascendontoken = token;
-  f1tv
-    .raw(reqPath, headers)
-    .then(function (res) {
-      message.respond({ returnValue: true, statusCode: res.statusCode, body: res.body });
-    })
-    .catch(function (err) {
-      message.respond({ returnValue: false, errorText: String(err) });
-    });
 });
 
 // What each feed in a PLAY response is. Feed URLs used to carry a readable

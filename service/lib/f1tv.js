@@ -231,12 +231,6 @@ function getPlay(contentId, subscriptionToken, entitlementToken, opts) {
   });
 }
 
-// Debug escape hatch for iterating on unverified endpoint shapes without a
-// redeploy - called directly over the Luna bus. Not for production use.
-function raw(pathAndQuery, headers) {
-  return f1tvRequest(pathAndQuery, headers);
-}
-
 module.exports = {
   getConfig: getConfig,
   getWhereami: getWhereami,
@@ -247,7 +241,6 @@ module.exports = {
   getSeason: getSeason,
   getContentVideo: getContentVideo,
   getPlay: getPlay,
-  raw: raw,
   DEFAULT_PLATFORM: DEFAULT_PLATFORM,
   LANGUAGE: LANGUAGE,
   LOGIN_STATUS: LOGIN_STATUS,

@@ -67,7 +67,6 @@ function showAuth(res) {
   if (!document.activeElement || document.activeElement === document.body) {
     document.getElementById(signedIn ? "browse-link" : "tv-browser-btn").focus();
   }
-  document.getElementById("probe-btn").style.display = signedIn ? "inline-block" : "none";
   document.getElementById("play-test").style.display = signedIn ? "block" : "none";
 
   if (signedIn && !cameSignedIn) {
@@ -154,19 +153,6 @@ document.getElementById("tv-browser-btn").addEventListener("click", function () 
 
 document.addEventListener("visibilitychange", function () {
   if (!document.hidden) poll(true);
-});
-
-document.getElementById("probe-btn").addEventListener("click", function () {
-  var out = document.getElementById("probe");
-  out.style.display = "block";
-  out.textContent = "calling f1tvProbe…";
-  callService("f1tvProbe")
-    .then(function (res) {
-      out.textContent = JSON.stringify(res, null, 2);
-    })
-    .catch(function (err) {
-      out.textContent = "FAILED: " + JSON.stringify(err, null, 2);
-    });
 });
 
 document.getElementById("play-test-btn").addEventListener("click", function () {
