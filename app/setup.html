@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>F1 HUD - Sign in to F1 TV</title>
+    <script src="lib/webOSTVjs-1.2.4/webOSTV.js"></script>
+    <script src="lib/qrcode/qrcode.js"></script>
+    <style>
+      html, body {
+        margin: 0; padding: 0; width: 1920px; height: 1080px;
+        background: #0b0b0d; color: #f2f2f2; font-family: sans-serif; overflow: hidden;
+      }
+      #wrap { display: flex; height: 100%; align-items: center; justify-content: center; gap: 80px; }
+      #left { max-width: 820px; }
+      h1 { color: #e10600; margin: 0 0 12px; font-size: 40px; }
+      h2 { font-size: 26px; margin: 34px 0 8px; }
+      p { font-size: 22px; opacity: 0.85; line-height: 1.5; margin: 0; }
+      #qr-card { text-align: center; }
+      #qr { background: #fff; padding: 16px; border-radius: 12px; display: inline-block; }
+      #qr svg { display: block; width: 380px; height: 380px; }
+      #qr-caption { font-size: 20px; margin-top: 14px; opacity: 0.8; }
+      #url { font-family: monospace; font-size: 18px; margin-top: 6px; color: #ffcc00; word-break: break-all; }
+      #status { font-size: 26px; padding: 14px 18px; border-radius: 10px; background: #16161a; border: 1px solid #2a2a30; }
+      #status.ok { border-color: #1f6b3f; } #status.pending { border-color: #6b5a1f; } #status.fail { border-color: #6b1f1f; }
+      #tv-browser-btn { font-size: 22px; padding: 14px 24px; margin-top: 14px; }
+      #tv-browser-btn:focus, #tv-browser-btn:hover { outline: 3px solid #fff; }
+      #browse-link { display: none; margin-top: 30px; font-size: 24px; color: #3ddc84; text-decoration: none; }
+      .ok { color: #3ddc84; }
+      .pending { color: #ffcc00; }
+      .fail { color: #ff5a5a; }
+      #probe { margin-top: 20px; font-family: monospace; font-size: 13px; white-space: pre-wrap;
+        background: #16161a; border: 1px solid #2a2a30; border-radius: 8px; padding: 12px;
+        max-width: 640px; max-height: 320px; overflow-y: auto; display: none; }
+      button { background: #e10600; color: #fff; border: none; padding: 10px 18px; border-radius: 6px;
+        font-size: 16px; margin-top: 16px; cursor: pointer; }
+      summary { cursor: pointer; opacity: 0.5; font-size: 13px; margin-top: 24px; }
+      summary:hover, summary:focus { opacity: 0.9; }
+      /* Dev app only (scripts/dev-server.js): signing in from this PC. */
+      #pc-signin ol { font-size: 22px; line-height: 1.5; padding-left: 28px; margin: 10px 0 0; opacity: 0.85; }
+      #pc-signin a, #pc-signin code { color: #ffcc00; }
+      #pc-token { display: block; width: 100%; height: 110px; margin-top: 16px; box-sizing: border-box;
+        font-family: monospace; font-size: 14px; padding: 10px; background: #16161a; color: #f2f2f2;
+        border: 1px solid #2a2a30; border-radius: 8px; }
+      #pc-result { font-size: 20px; margin-left: 12px; }
+      #pc-bookmarklet { border: 1px dashed #ffcc00; border-radius: 6px; padding: 2px 8px; cursor: grab; }
+    </style>
+  </head>
+  <body data-back="index.html">
+    <div id="wrap">
+      <div id="left">
+        <h1>Sign in to F1 TV</h1>
+        <div id="status" class="pending">Checking sign-in&hellip;</div>
+
+        <div id="tv-options">
+        <h2>With your phone</h2>
+        <p>
+          Scan the code. The page sets up a one-time bookmark. After that,
+          signing in is: log in on formula1.com on your phone, then tap the
+          bookmark. Stay on this screen while you do it.
+        </p>
+
+        <h2>With the TV browser</h2>
+        <p>
+          Log in on formula1.com in the TV's web browser, then come back to
+          this app. It picks the sign-in up on its own.
+        </p>
+        <button id="tv-browser-btn">Open F1 login in the TV browser</button>
+        </div>
+
+        <div id="pc-signin" style="display:none">
+          <h2>On this PC</h2>
+          <ol>
+            <li><a href="https://account.formula1.com/#/en/login" target="_blank" rel="noopener">Log in on formula1.com</a> in this browser.</li>
+            <li>On that tab, press F12 and open Application &rarr; Cookies, then copy the value of <code>login-session</code>.</li>
+            <li>Paste it below. The whole cookie value works, or just the token inside it.</li>
+          </ol>
+          <textarea id="pc-token" placeholder="login-session cookie value, or eyJ&hellip;"></textarea>
+          <button id="pc-save">Save sign-in</button><span id="pc-result"></span>
+          <p style="margin-top:24px;font-size:18px">
+            Or skip the copying: drag <a id="pc-bookmarklet" href="#">Send F1 to dev app</a> to your
+            bookmarks bar, then click it on the logged-in formula1.com tab.
+          </p>
+        </div>
+
+        <a id="browse-link" href="browse.html">&#10003; Signed in &mdash; go to Browse &rarr;</a>
+        <button id="probe-btn" style="display:none">Test F1TV connection</button>
+        <div id="probe"></div>
+        <div id="play-test" style="display:none">
+          <details>
+            <summary>Developer tools</summary>
+            <label>Test PLAY for a contentId (from a captured browser request):</label><br>
+            <input id="content-id" type="text" placeholder="1000011156"
+              style="font-family:monospace;font-size:16px;padding:8px;width:220px;
+              background:#16161a;color:#f2f2f2;border:1px solid #2a2a30;border-radius:6px" />
+            <button id="play-test-btn">Test PLAY</button>
+            <div id="play-result" style="font-family:monospace;font-size:12px;white-space:pre-wrap;
+              background:#16161a;border:1px solid #2a2a30;border-radius:8px;padding:12px;
+              margin-top:10px;max-width:640px;max-height:280px;overflow-y:auto"></div>
+
+            <label style="margin-top:20px;display:block">Browse a catalog page (hunt for live content):</label>
+            <input id="page-id" type="text" placeholder="395"
+              style="font-family:monospace;font-size:16px;padding:8px;width:220px;
+              background:#16161a;color:#f2f2f2;border:1px solid #2a2a30;border-radius:6px" />
+            <button id="page-test-btn">Browse page</button>
+            <div id="page-result" style="font-family:monospace;font-size:11px;white-space:pre-wrap;
+              background:#16161a;border:1px solid #2a2a30;border-radius:8px;padding:12px;
+              margin-top:10px;max-width:640px;max-height:280px;overflow-y:auto"></div>
+
+            <label style="margin-top:20px;display:block">Manual-load panel on the video screen:</label>
+            <button id="debug-panel-btn">Off</button>
+            <span style="opacity:0.6;font-size:13px;margin-left:10px">Adds a button to the player's
+              control bar that opens the contentId loader.</span>
+          </details>
+        </div>
+      </div>
+      <div id="qr-card">
+        <div id="qr"></div>
+        <div id="qr-caption">Scan with your phone</div>
+        <div id="url">resolving TV address&hellip;</div>
+      </div>
+    </div>
+    <script src="js/local-mock.js"></script>
+    <script src="js/setup.js"></script>
+    <script src="js/back-nav.js"></script>
+  </body>
+</html>

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>F1 HUD - browse</title>
+    <script src="lib/webOSTVjs-1.2.4/webOSTV.js"></script>
+    <style>
+      /* Barlow and Barlow Condensed, latin subset, bundled (fonts/OFL.txt):
+         the TV shouldn't depend on Google Fonts being reachable. */
+      @font-face { font-family: "Barlow"; font-weight: 500; src: url(fonts/Barlow-500.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow"; font-weight: 600; src: url(fonts/Barlow-600.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow"; font-weight: 700; src: url(fonts/Barlow-700.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow Condensed"; font-weight: 500; src: url(fonts/BarlowCondensed-500.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow Condensed"; font-weight: 600; src: url(fonts/BarlowCondensed-600.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow Condensed"; font-weight: 700; src: url(fonts/BarlowCondensed-700.woff2) format("woff2"); }
+
+      :root {
+        --bg: #0b0b0d; --surface: #16161a; --line: #2a2a30;
+        --text: #f2f2f2; --muted: #9b9ba4; --dim: #6c6c75;
+        --body: "Barlow", "Segoe UI", sans-serif;
+        --cond: "Barlow Condensed", "Arial Narrow", sans-serif;
+      }
+      html, body {
+        margin: 0; padding: 0; width: 1920px; height: 1080px;
+        background: var(--bg); color: var(--text); font-family: var(--body); overflow-y: auto;
+      }
+      body::-webkit-scrollbar { display: none; }
+      svg { display: block; flex: none; }
+      [hidden] { display: none !important; }
+
+      #page { padding: 40px 0 64px 64px; display: flex; flex-direction: column; gap: 34px; }
+      .pad-right { padding-right: 64px; }
+
+      /* ---- header ---- */
+      #meeting { display: flex; align-items: center; gap: 14px; min-height: 72px; }
+      #meeting .grow { flex: 1; }
+      button.round-btn { border: none; padding: 0; margin: 0; cursor: pointer; font: inherit; }
+      .weekend-nav { flex: none; transition: opacity 0.2s ease, background-color 0.15s ease; }
+      .weekend-nav[aria-disabled="true"] { opacity: 0.25; pointer-events: none; }
+      /* The weekend title is a button: OK opens the season list. */
+      #meeting-title {
+        display: flex; align-items: center; gap: 26px; min-width: 0; padding: 10px 20px; margin: -10px 0;
+        background: none; border: none; border-radius: 16px; color: inherit; font: inherit; text-align: left; cursor: pointer;
+        transition: background-color 0.15s ease;
+      }
+      #meeting-title:focus, #meeting-title:hover { outline: 4px solid #fff; outline-offset: 2px; background: rgba(255,255,255,0.05); }
+      #meeting-title #meeting-text { flex: none; }
+      #meeting-name-row { display: flex; align-items: center; gap: 14px; }
+      .season-caret { width: 32px; height: 32px; color: var(--muted); transition: transform 0.2s ease; }
+      #meeting-title:focus .season-caret, #meeting-title:hover .season-caret { color: var(--text); transform: translateY(3px); }
+      #flag { width: 84px; height: 63px; border-radius: 8px; flex: none; box-shadow: 0 0 0 1px rgba(255,255,255,0.12); object-fit: cover; }
+      #meeting-text { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+      #meeting-name { font-weight: 700; font-size: 46px; line-height: 1; letter-spacing: -0.01em; }
+      #meeting-sub {
+        display: flex; gap: 14px; font-family: var(--cond); font-weight: 600; font-size: 26px;
+        letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+      }
+      #meeting-sub .sep { color: var(--dim); }
+      #actions { display: flex; gap: 12px; }
+      .round-btn {
+        width: 60px; height: 60px; border-radius: 30px; background: var(--surface); color: var(--muted);
+        display: flex; align-items: center; justify-content: center; text-decoration: none;
+      }
+      .round-btn:focus, .round-btn:hover { outline: 4px solid #fff; outline-offset: 3px; color: var(--text); }
+
+      /* Sign-in expiry reminder (see browse.js checkSignIn). */
+      #auth-banner {
+        display: none; align-items: center; gap: 24px; margin-right: 64px;
+        padding: 16px 22px; border-radius: 12px; background: #2a2208; border: 1px solid #6b5a1f;
+        color: #ffcc00; font-size: 24px; font-weight: 500;
+      }
+      #auth-banner a {
+        margin-left: auto; background: #e10600; color: #fff; text-decoration: none; font-weight: 600;
+        padding: 10px 20px; border-radius: 8px; font-size: 22px; white-space: nowrap;
+      }
+      #auth-banner a:focus, #auth-banner a:hover { outline: 4px solid #fff; outline-offset: 3px; }
+
+      #status { margin-right: 64px; font-family: var(--cond); font-weight: 500; font-size: 28px; color: var(--muted); padding: 80px 0; }
+      #status.fail { color: #ff5a5a; }
+      /* A saved page is showing but the refresh failed: say so without
+         taking over the screen. */
+      #status.note { padding: 0; font-size: 24px; color: var(--dim); }
+
+      /* ---- loading skeleton ---- */
+      .sk { position: relative; overflow: hidden; background: #16161a; border-radius: 14px; }
+      /* A soft sheen sweeps each block. It moves by transform so the TV
+         composites it instead of repainting every frame. */
+      .sk::after {
+        content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 60%;
+        background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.055) 50%, rgba(255,255,255,0) 100%);
+        transform: translateX(-100%); animation: shimmer 1.6s ease-in-out infinite; will-change: transform;
+      }
+      @keyframes shimmer { to { transform: translateX(270%); } }
+      .sk-row .sk:nth-child(2)::after { animation-delay: 0.08s; }
+      .sk-row .sk:nth-child(3)::after { animation-delay: 0.16s; }
+      .sk-row .sk:nth-child(4)::after { animation-delay: 0.24s; }
+      .sk-row .sk:nth-child(5)::after { animation-delay: 0.32s; }
+      .sk-hero-side .sk:nth-child(1)::after { animation-delay: 0.1s; }
+      .sk-hero-side .sk:nth-child(2)::after { animation-delay: 0.2s; }
+
+      .sk-flag { width: 84px; height: 63px; border-radius: 8px; flex: none; }
+      .sk-title { width: 460px; height: 46px; border-radius: 8px; }
+      .sk-sub { width: 540px; height: 26px; border-radius: 6px; }
+      #skeleton { display: flex; flex-direction: column; gap: 34px; }
+      .sk-hero { display: flex; gap: 40px; padding-right: 64px; }
+      .sk-hero-main { flex: 1; height: 390px; }
+      .sk-hero-side { width: 520px; display: flex; flex-direction: column; gap: 24px; }
+      .sk-hero-side .sk { height: 183px; }
+      .sk-rail { display: flex; flex-direction: column; gap: 4px; }
+      .sk-head { width: 320px; height: 36px; border-radius: 8px; }
+      .sk-row { display: flex; gap: 20px; padding: 16px 0; overflow: hidden; }
+      .sk-session { width: 360px; height: 200px; flex: none; }
+      .sk-video { width: 400px; height: 225px; flex: none; }
+
+      body:not(.is-loading) #skeleton, body:not(.is-loading) .sk { display: none; }
+      body.is-loading #meeting-name, body.is-loading #meeting-sub, body.is-loading #flag { display: none; }
+      /* Switching weekends: the header is known from the season list at once,
+         only the page below waits. */
+      body.header-ready .sk-flag, body.header-ready .sk-title, body.header-ready .sk-sub { display: none; }
+      body.header-ready #meeting-name { display: block; }
+      body.header-ready #meeting-sub { display: flex; }
+      body.header-ready #flag { display: block; }
+      /* Content eases in when it replaces the skeleton. Later refreshes
+         re-render in place without replaying this. */
+      body:not(.is-loading) #meeting-text, body:not(.is-loading) #hero, body:not(.is-loading) #rails { animation: appear 0.35s ease-out; }
+      @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+      body.instant #meeting-text, body.instant #hero, body.instant #rails { animation: none; }
+
+      /* ---- season list ---- */
+      #season-view {
+        position: fixed; left: 0; top: 0; width: 1920px; height: 1080px; z-index: 20;
+        background: rgba(11,11,13,0.97); display: flex; justify-content: center;
+        opacity: 0; transition: opacity 0.22s ease;
+      }
+      #season-view.open { opacity: 1; }
+      #season-panel { width: 1560px; display: flex; flex-direction: column; padding-top: 52px; box-sizing: border-box; }
+      #season-head { display: flex; align-items: center; gap: 18px; padding: 0 30px 26px; }
+      #season-title { font-weight: 700; font-size: 50px; min-width: 330px; text-align: center; font-variant-numeric: tabular-nums; }
+      #season-head .round-btn[aria-disabled="true"] { opacity: 0.25; pointer-events: none; }
+      #season-hint { margin-left: auto; display: flex; gap: 26px; font-family: var(--cond); font-weight: 500; font-size: 22px; color: var(--dim); }
+      #season-hint b { color: var(--muted); font-weight: 700; margin-right: 6px; }
+      #season-list {
+        position: relative; flex: 1; overflow-y: auto; padding: 14px 30px 120px;
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      #season-panel { position: relative; }
+      #season-panel::before, #season-panel::after {
+        content: ""; position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none;
+      }
+      #season-panel::before { top: 128px; height: 46px; background: linear-gradient(180deg, #0b0b0d, rgba(11,11,13,0)); }
+      #season-panel::after { bottom: 0; height: 120px; background: linear-gradient(0deg, #0b0b0d, rgba(11,11,13,0)); }
+      #season-list::-webkit-scrollbar { display: none; }
+      .season-row {
+        flex: none; display: flex; align-items: center; gap: 30px; padding: 18px 26px; border-radius: 16px;
+        cursor: pointer; outline: none; transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+      }
+      .season-row:hover, .season-row:focus { background: #f2f2f2; color: #0b0b0d; transform: scale(1.01); }
+      .season-row .flag {
+        width: 88px; height: 66px; border-radius: 9px; object-fit: cover; flex: none;
+        box-shadow: 0 0 0 1px rgba(255,255,255,0.12); background: var(--surface);
+      }
+      .season-row .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+      .season-row .line1 { display: flex; align-items: center; gap: 16px; }
+      .season-row .name { font-weight: 700; font-size: 34px; line-height: 1.05; }
+      .season-row .chips { display: flex; gap: 10px; }
+      .season-row .line2 { display: flex; align-items: baseline; gap: 16px; min-width: 0; color: var(--muted); }
+      .season-row .round { flex: none; font-family: var(--cond); font-weight: 700; font-size: 24px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); }
+      .season-row .official { font-size: 20px; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .season-row .dates {
+        flex: none; font-family: var(--cond); font-weight: 600; font-size: 26px; padding: 6px 16px;
+        border: 2px solid var(--line); border-radius: 10px; white-space: nowrap; font-variant-numeric: tabular-nums;
+      }
+      .season-row .chev { width: 28px; height: 28px; flex: none; color: var(--dim); }
+      .season-row:hover .line2, .season-row:focus .line2 { color: #55555e; }
+      .season-row:hover .round, .season-row:focus .round,
+      .season-row:hover .chev, .season-row:focus .chev { color: #0b0b0d; }
+      .season-row:hover .dates, .season-row:focus .dates { border-color: #c6c6cc; }
+      .season-row.upcoming:not(:focus):not(:hover) .flag,
+      .season-row.upcoming:not(:focus):not(:hover) .info,
+      .season-row.upcoming:not(:focus):not(:hover) .dates { opacity: 0.5; }
+      .chip { font-family: var(--cond); font-weight: 700; font-size: 19px; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 10px; border-radius: 7px; }
+      .chip.viewing { background: #e10600; color: #fff; }
+      .chip.now { background: rgba(255,255,255,0.14); color: var(--text); }
+      .chip.upcoming { color: var(--muted); box-shadow: inset 0 0 0 2px #3a3a42; }
+      .season-row:focus .chip.now, .season-row:hover .chip.now { background: rgba(0,0,0,0.1); color: #0b0b0d; }
+      .season-row:focus .chip.upcoming, .season-row:hover .chip.upcoming { color: #55555e; box-shadow: inset 0 0 0 2px #c6c6cc; }
+      .season-empty { font-family: var(--cond); font-weight: 500; font-size: 30px; color: var(--muted); padding: 60px 26px; }
+
+      /* How far into a replay the viewer got (js/resume.js). */
+      .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: rgba(255,255,255,0.18); z-index: 1; }
+      .progress i { display: block; height: 100%; background: #e10600; }
+      #refresh-link.busy svg { animation: spin 0.9s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        .sk::after, #refresh-link.busy svg { animation: none; }
+        body:not(.is-loading) #meeting-text, body:not(.is-loading) #hero, body:not(.is-loading) #rails { animation: none; }
+      }
+
+      /* ---- tiles, shared ---- */
+      .tile {
+        position: relative; box-sizing: border-box; border-radius: 14px; overflow: hidden; cursor: pointer;
+        border: 2px solid var(--line); background: var(--surface);
+        transition: transform 0.12s ease-out;
+      }
+      /* Main races: tinted fill + series outline. Sprints: series outline. */
+      .tile.race { background: var(--tint); border-color: var(--series); }
+      .tile.sprint { border-color: var(--series); }
+      .tile:focus, .tile:hover {
+        outline: 4px solid #fff; outline-offset: 4px; transform: scale(1.03);
+        box-shadow: 0 18px 40px rgba(0,0,0,0.6); z-index: 1;
+      }
+      .badge {
+        border-radius: 7px; background: var(--series); color: #fff; flex: none;
+        display: flex; align-items: center; justify-content: center;
+        font-family: var(--cond); font-weight: 700; letter-spacing: 0.02em;
+      }
+      .thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #121216; }
+      /* Wide tiles (hero, highlight beside it) vs 16:9 thumbnails: the whole
+         thumbnail sits sharp on the right with a feathered left edge, over a
+         blurred copy of itself filling the tile. The blur is drawn once into
+         a tiny canvas that CSS stretches (browse.js paintBackdrop) - a CSS
+         filter this size would be re-rendered on the TV GPU while scrolling. */
+      .backdrop { position: absolute; inset: 0; width: 100%; height: 100%; background: #121216; opacity: 0; transition: opacity 0.4s ease-out; }
+      .sharp {
+        position: absolute; top: 0; right: 0; height: 100%; aspect-ratio: 16 / 9; object-fit: cover;
+        /* Fades across the thumbnail's full width on an eased curve, so its
+           left end dissolves into the backdrop with no visible edge. */
+        --fade: linear-gradient(90deg,
+          rgba(0,0,0,0) 0%, rgba(0,0,0,0.03) 10%, rgba(0,0,0,0.1) 20%, rgba(0,0,0,0.22) 30%,
+          rgba(0,0,0,0.36) 40%, rgba(0,0,0,0.5) 50%, rgba(0,0,0,0.64) 60%, rgba(0,0,0,0.78) 70%,
+          rgba(0,0,0,0.9) 80%, rgba(0,0,0,0.97) 90%, #000 100%);
+        -webkit-mask-image: var(--fade); mask-image: var(--fade);
+        opacity: 0; transition: opacity 0.4s ease-out;
+      }
+      .has-backdrop .backdrop, .has-backdrop .sharp { opacity: 1; }
+      .meta { font-family: var(--cond); font-weight: 500; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .meta .soft { color: var(--dim); }
+      .live-pill {
+        display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px; border-radius: 7px;
+        background: #e10600; color: #fff; font-family: var(--cond); font-weight: 700; letter-spacing: 0.08em;
+      }
+      .live-pill::before { content: ""; width: 10px; height: 10px; border-radius: 5px; background: #fff; animation: blink 1.6s ease-in-out infinite; }
+      @keyframes blink { 50% { opacity: 0.35; } }
+      .title-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+      /* ---- hero ---- */
+      /* The gap has to hold a focused tile's growth plus its outline (4px,
+         offset 4px). 3% of the ~1270px hero is ~19px a side, so the hero
+         grows less; the side tiles' 3% is ~8px. */
+      #hero { display: flex; gap: 40px; }
+      #hero-main { flex: 1; height: 390px; }
+      #hero-main:focus, #hero-main:hover { transform: scale(1.012); }
+      #hero-main .shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(var(--tint-rgb), 0.94) 0%, rgba(var(--tint-rgb), 0.82) 42%, rgba(var(--tint-rgb), 0.5) 100%); }
+      #hero-main .body { position: absolute; left: 40px; top: 36px; bottom: 36px; right: 40px; display: flex; flex-direction: column; justify-content: space-between; }
+      .eyebrow { display: flex; align-items: center; gap: 14px; font-family: var(--cond); font-weight: 700; font-size: 26px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--series); }
+      .hero-title { font-weight: 700; font-size: 84px; line-height: 0.95; letter-spacing: -0.02em; }
+      .hero-when { font-family: var(--cond); font-weight: 600; font-size: 28px; display: flex; gap: 18px; font-variant-numeric: tabular-nums; }
+      .hero-cta { display: flex; align-items: center; gap: 22px; }
+      .play-label {
+        height: 58px; box-sizing: border-box; padding: 0 28px; border-radius: 29px; background: var(--text); color: var(--bg);
+        display: flex; align-items: center; gap: 12px; font-family: var(--cond); font-weight: 700; font-size: 26px;
+        letter-spacing: 0.06em; text-transform: uppercase;
+      }
+      .tag { display: flex; align-items: center; gap: 10px; font-family: var(--cond); font-weight: 600; font-size: 24px; color: var(--text); }
+      #hero-side { width: 520px; display: flex; flex-direction: column; gap: 24px; }
+      #hero-side .tile { height: 183px; }
+      .side-session { padding: 22px 26px; display: flex; flex-direction: column; justify-content: space-between; }
+      .side-video .shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(11,11,13,0.9) 0%, rgba(11,11,13,0.72) 45%, rgba(11,11,13,0.45) 100%); }
+      .side-video .body { position: absolute; left: 26px; right: 26px; bottom: 20px; display: flex; flex-direction: column; gap: 6px; text-shadow: 0 2px 10px rgba(0,0,0,0.7); }
+      .kicker { font-family: var(--cond); font-weight: 700; font-size: 21px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+      /* ---- rails ---- */
+      #rails { display: flex; flex-direction: column; gap: 26px; }
+      .rail { display: flex; flex-direction: column; gap: 4px; }
+      .rail-head { display: flex; align-items: baseline; gap: 14px; }
+      .rail-title { font-weight: 700; font-size: 32px; }
+      .rail-count { font-family: var(--cond); font-weight: 600; font-size: 24px; color: var(--dim); }
+      /* Room above/below/after the tiles so a focused tile's outline and
+         scale aren't clipped by the row's scroll box. */
+      /* Rows run to the screen edge (margin -64px, padding 64px), so tiles sit
+         in the page gutter at rest but a focused tile has room for its outline
+         and scale, and scrolled tiles pass under the edge fade at the real
+         screen edge. */
+      .rail-row {
+        position: relative; display: flex; gap: 20px; overflow-x: auto; padding: 16px 64px 16px 64px; margin-left: -64px;
+      }
+      /* The edges fade on whichever side has more to scroll to (browse.js
+         updateRowEdges). Gradient overlays rather than a mask on the scroller:
+         a mask makes the TV re-composite the whole row every frame it moves. */
+      .rail-viewport { position: relative; }
+      .rail-viewport::before, .rail-viewport::after {
+        content: ""; position: absolute; top: 0; bottom: 0; width: 110px; z-index: 2; pointer-events: none;
+        opacity: 0; transition: opacity 0.2s ease;
+      }
+      .rail-viewport::before { left: -64px; background: linear-gradient(90deg, var(--bg) 25%, rgba(11,11,13,0)); }
+      .rail-viewport::after { right: 0; background: linear-gradient(270deg, var(--bg) 25%, rgba(11,11,13,0)); }
+      .rail-viewport.more-left::before, .rail-viewport.more-right::after { opacity: 1; }
+      .rail-row::-webkit-scrollbar { display: none; }
+
+      .session { width: 360px; height: 200px; flex: none; padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; }
+      .session .top { display: flex; align-items: center; justify-content: space-between; }
+      .session .name { font-weight: 600; font-size: 30px; line-height: 1.1; }
+      .session .meta { font-size: 23px; }
+
+      .video { width: 400px; flex: none; display: flex; flex-direction: column; gap: 12px; cursor: pointer; outline: none; }
+      .video .frame { height: 225px; }
+      .video .corner { position: absolute; left: 14px; top: 14px; }
+      .video .chip {
+        position: absolute; left: 14px; bottom: 14px; display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+        border-radius: 8px; background: rgba(11,11,13,0.85); font-family: var(--cond); font-weight: 600; font-size: 21px;
+        font-variant-numeric: tabular-nums;
+      }
+      .video .vtitle {
+        font-weight: 600; font-size: 26px; line-height: 1.15; padding: 0 2px;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      }
+      .video .vkind { font-family: var(--cond); font-weight: 600; font-size: 20px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); padding: 0 2px; margin-top: -6px; }
+      /* The whole video card takes focus; the frame shows it. */
+      .video:focus .frame, .video:hover .frame {
+        outline: 4px solid #fff; outline-offset: 4px; transform: scale(1.03); box-shadow: 0 18px 40px rgba(0,0,0,0.6);
+      }
+    </style>
+  </head>
+  <body class="is-loading">
+    <div id="page">
+      <!-- Weekend switcher (js/weekends.js): the arrows step to the previous
+           and next weekend; the title opens the season list. -->
+      <div id="meeting" class="pad-right">
+        <button id="prev-weekend" class="round-btn weekend-nav" title="Previous weekend" aria-disabled="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <button id="meeting-title" title="All weekends">
+          <div class="sk sk-flag"></div>
+          <img id="flag" alt="" hidden />
+          <div id="meeting-text">
+            <div class="sk sk-title"></div>
+            <div class="sk sk-sub"></div>
+            <div id="meeting-name-row">
+              <div id="meeting-name">Browse</div>
+              <svg class="season-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+            <div id="meeting-sub"></div>
+          </div>
+        </button>
+        <button id="next-weekend" class="round-btn weekend-nav" title="Next weekend" aria-disabled="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+        <div class="grow"></div>
+        <div id="actions">
+          <a href="#" id="refresh-link" class="round-btn" title="Refresh">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+          </a>
+          <a href="setup.html" class="round-btn" title="Sign-in and settings">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+          </a>
+        </div>
+      </div>
+      <div id="auth-banner"><span id="auth-banner-text"></span><a href="setup.html">Renew sign-in</a></div>
+      <div id="status" hidden></div>
+      <!-- Placeholder layout shown until the first page data (saved or
+           fetched) renders: same sizes as the real hero and rails, so
+           nothing jumps when it swaps. -->
+      <div id="skeleton" aria-hidden="true">
+        <div class="sk-hero">
+          <div class="sk sk-hero-main"></div>
+          <div class="sk-hero-side"><div class="sk"></div><div class="sk"></div></div>
+        </div>
+        <div class="sk-rail">
+          <div class="sk sk-head"></div>
+          <div class="sk-row"><div class="sk sk-session"></div><div class="sk sk-session"></div><div class="sk sk-session"></div><div class="sk sk-session"></div><div class="sk sk-session"></div></div>
+        </div>
+        <div class="sk-rail">
+          <div class="sk sk-head"></div>
+          <div class="sk-row"><div class="sk sk-session"></div><div class="sk sk-session"></div><div class="sk sk-session"></div><div class="sk sk-session"></div><div class="sk sk-session"></div></div>
+        </div>
+        <div class="sk-rail">
+          <div class="sk sk-head"></div>
+          <div class="sk-row"><div class="sk sk-video"></div><div class="sk sk-video"></div><div class="sk sk-video"></div><div class="sk sk-video"></div><div class="sk sk-video"></div></div>
+        </div>
+      </div>
+      <div id="hero" class="pad-right" hidden></div>
+      <div id="rails"></div>
+    </div>
+    <!-- Season list (js/weekends.js). -->
+    <div id="season-view" hidden>
+      <div id="season-panel">
+        <div id="season-head">
+          <button id="season-prev" class="round-btn" title="Previous season"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+          <div id="season-title">Season</div>
+          <button id="season-next" class="round-btn" title="Next season"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+          <div id="season-hint">
+            <span><b>↑ ↓</b> Weekend</span><span><b>← →</b> Season</span><span><b>OK</b> Open</span><span><b>Back</b> Close</span>
+          </div>
+        </div>
+        <div id="season-list"></div>
+      </div>
+    </div>
+
+    <script src="js/local-mock.js"></script>
+    <script src="js/resume.js"></script>
+    <script src="js/browse.js"></script>
+    <script src="js/weekends.js"></script>
+    <script src="js/back-nav.js"></script>
+  </body>
+</html>

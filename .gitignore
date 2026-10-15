@@ -1,0 +1,10 @@
+build/
+*.log
+
+# service/node_modules IS bundled into the ipk (webOS services must be
+# self-contained), so it's not gitignored blanket-style like a normal
+# node project - only genuinely disposable stuff below is ignored.
+node_modules/.cache/
+
+# scripts/dev-server.js state (holds an F1 TV sign-in token)
+.dev/

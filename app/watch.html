@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>F1 HUD - watch (real F1TV content)</title>
+    <script src="lib/webOSTVjs-1.2.4/webOSTV.js"></script>
+    <script src="lib/shaka/shaka-player.compiled.js"></script>
+    <style>
+      /* Bundled Barlow faces (fonts/OFL.txt), as on Browse. */
+      @font-face { font-family: "Barlow"; font-weight: 500; src: url(fonts/Barlow-500.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow"; font-weight: 600; src: url(fonts/Barlow-600.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow"; font-weight: 700; src: url(fonts/Barlow-700.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow Condensed"; font-weight: 500; src: url(fonts/BarlowCondensed-500.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow Condensed"; font-weight: 600; src: url(fonts/BarlowCondensed-600.woff2) format("woff2"); }
+      @font-face { font-family: "Barlow Condensed"; font-weight: 700; src: url(fonts/BarlowCondensed-700.woff2) format("woff2"); }
+      html, body {
+        margin: 0; padding: 0; width: 1920px; height: 1080px;
+        background: #0b0b0d; color: #f2f2f2; font-family: sans-serif; overflow: hidden;
+      }
+      #wrap { display: flex; height: 100%; }
+      #left { width: 480px; flex: none; padding: 24px; overflow-y: auto; box-sizing: border-box; }
+      #left.hidden-panel { display: none; }
+      #left.hidden-panel ~ #right { flex: 1; }
+      #right { flex: 1; position: relative; background: #000; }
+      video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+      #left-header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+      #left-header a { color: #888; font-size: 20px; text-decoration: none; }
+      #left-header a:hover, #left-header a:focus { color: #e10600; }
+      #left-header .brand { color: #e10600; font-size: 16px; font-weight: bold; }
+      h1 { color: #f2f2f2; margin: 0 0 16px; font-size: 16px; opacity: 0.6; font-weight: normal; }
+      label { font-size: 13px; opacity: 0.7; display: block; margin-top: 10px; }
+      input {
+        width: 100%; box-sizing: border-box; font-family: monospace; font-size: 14px;
+        padding: 6px 8px; background: #16161a; color: #f2f2f2; border: 1px solid #2a2a30;
+        border-radius: 6px; margin-top: 4px;
+      }
+      button {
+        background: #e10600; color: #fff; border: none; padding: 8px 14px; border-radius: 6px;
+        font-size: 14px; margin-top: 10px; cursor: pointer;
+      }
+      #status { margin-top: 12px; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
+      .ok { color: #3ddc84; } .fail { color: #ff5a5a; } .pending { color: #ffcc00; }
+      #feeds { margin-top: 16px; }
+      .feed-row {
+        padding: 8px 10px; margin-bottom: 4px; background: #16161a; border: 1px solid #2a2a30;
+        border-radius: 6px; cursor: pointer; font-family: monospace; font-size: 13px;
+      }
+      .feed-row.active { border-color: #e10600; background: #241012; }
+      #stats {
+        position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.6);
+        padding: 8px 12px; border-radius: 6px; font-family: monospace; font-size: 14px;
+        pointer-events: none;
+      }
+
+      #toast {
+        position: absolute; top: 48px; left: 50%; transform: translate(-50%, -12px); opacity: 0; pointer-events: none;
+        padding: 14px 26px; border-radius: 14px; background: rgba(22,22,26,0.92); border: 1px solid #2a2a30;
+        font-family: "Barlow", "Segoe UI", sans-serif; font-weight: 600; font-size: 26px; white-space: nowrap;
+        transition: opacity 0.25s ease, transform 0.25s ease;
+      }
+      #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+      /* ---- player controls: two rows, TV style ----
+         Same type and colors as Browse. The bar's gradient area lets
+         pointer events through (the rows take them back), so it never
+         blocks the timing tower's scroll wheel. */
+      #controls {
+        position: absolute; left: 0; right: 0; bottom: 0;
+        display: flex; flex-direction: column; gap: 14px;
+        padding: 140px 64px 36px; box-sizing: border-box; pointer-events: none;
+        background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.62) 45%, rgba(0,0,0,0) 100%);
+        font-family: "Barlow Condensed", "Arial Narrow", sans-serif; color: #f2f2f2;
+        transition: opacity 0.3s ease, transform 0.3s ease;
+      }
+      /* Auto-hidden during playback after a few seconds without input (see
+         showControls() in watch.js). */
+      #controls.controls-hidden { opacity: 0; transform: translateY(28px); }
+      #controls.controls-hidden #seek-row, #controls.controls-hidden #button-row { pointer-events: none; }
+
+      #seek-row { display: flex; align-items: center; gap: 26px; pointer-events: auto; }
+      .time { font-weight: 600; font-size: 28px; min-width: 104px; font-variant-numeric: tabular-nums; }
+      #time-total { text-align: right; color: #9b9ba4; }
+      #seek { position: relative; flex: 1; height: 40px; display: flex; align-items: center; cursor: pointer; outline: none; }
+      #seek-track {
+        position: relative; width: 100%; height: 6px; border-radius: 5px; overflow: hidden;
+        background: rgba(255,255,255,0.22); transition: height 0.18s ease;
+      }
+      #seek-buffered { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(255,255,255,0.3); }
+      #seek-played { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #e10600; }
+      #seek-thumb {
+        position: absolute; top: 50%; left: 0; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%;
+        background: #f2f2f2; transform: scale(0.7); transition: transform 0.18s ease, box-shadow 0.18s ease;
+      }
+      #seek:focus #seek-track, #seek:hover #seek-track, #seek.scrubbing #seek-track { height: 10px; }
+      #seek:focus #seek-thumb, #seek:hover #seek-thumb, #seek.scrubbing #seek-thumb {
+        transform: scale(1.3); box-shadow: 0 0 0 7px rgba(225,6,0,0.4);
+      }
+      /* Target time above the thumb while stepping or dragging. */
+      #seek-bubble {
+        position: absolute; bottom: 40px; left: 0; transform: translate(-50%, 6px); padding: 4px 12px; border-radius: 8px;
+        background: #f2f2f2; color: #0b0b0d; font-weight: 700; font-size: 26px; white-space: nowrap;
+        font-variant-numeric: tabular-nums; opacity: 0; pointer-events: none;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+      #seek.scrubbing #seek-bubble { opacity: 1; transform: translate(-50%, 0); }
+
+      #button-row { display: flex; align-items: center; justify-content: space-between; pointer-events: auto; }
+      #button-row .group { display: flex; align-items: center; gap: 12px; }
+      #controls button.ctrl {
+        position: relative; width: 64px; height: 64px; border-radius: 32px; border: none; margin: 0; padding: 0;
+        background: transparent; color: #f2f2f2; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: background-color 0.18s ease, color 0.18s ease;
+      }
+      #controls button.ctrl.toggled { color: #e10600; }
+      #controls button.ctrl:hover, #controls button.ctrl:focus { background: #f2f2f2; color: #0b0b0d; outline: none; }
+      #controls button.ctrl .icon { width: 34px; height: 34px; transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+      /* An overlay that's on (timing tower, track map) gets a red dot. */
+      #controls button.ctrl::after {
+        content: ""; position: absolute; left: 50%; bottom: 5px; width: 6px; height: 6px; margin-left: -3px;
+        border-radius: 3px; background: #e10600; transform: scale(0); transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1.4);
+      }
+      #controls button.ctrl.toggled::after { transform: scale(1); }
+      /* Press feedback, from the remote's OK as well as a click. */
+      #controls button.ctrl.pressed { animation: press 0.24s ease-out; }
+      @keyframes press { 40% { transform: scale(0.86); } 100% { transform: scale(1); } }
+      /* Swapped icons (play/pause, mute) pop in. */
+      #controls .icon.pop { animation: pop 0.3s cubic-bezier(0.2, 0.8, 0.2, 1.3); }
+      @keyframes pop { from { transform: scale(0.55); opacity: 0.2; } to { transform: scale(1); opacity: 1; } }
+      /* The gear turns while settings is open, and back when it closes. */
+      #settings-btn.open .icon { transform: rotate(90deg); }
+      #camera-btn.open .icon { transform: scale(1.12); }
+
+      /* Rounded track with the level as a white fill; --fill is set from
+         the volume and mute state in watch.js. */
+      #volume {
+        --fill: 100%;
+        width: 130px; height: 28px; margin: 0 10px; padding: 0; background: transparent; cursor: pointer;
+        -webkit-appearance: none; appearance: none;
+      }
+      #volume:focus { outline: none; }
+      #volume::-webkit-slider-runnable-track {
+        height: 6px; border-radius: 3px;
+        background: linear-gradient(90deg, #f2f2f2 0%, #f2f2f2 var(--fill), rgba(255,255,255,0.26) var(--fill), rgba(255,255,255,0.26) 100%);
+      }
+      #volume::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%;
+        background: #f2f2f2; transition: transform 0.15s ease;
+      }
+      #volume:hover::-webkit-slider-thumb { transform: scale(1.2); }
+
+      /* Settings that sit in the bar when there's room (captions, quality,
+         speed) - watch.js fitBarButtons() folds them back into the
+         settings menu when there isn't. */
+      [hidden] { display: none !important; }
+      #controls button.ctrl.text-ctrl { width: auto; min-width: 64px; padding: 0 14px; box-sizing: border-box; }
+      .text-ctrl .label {
+        font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 700; font-size: 24px;
+        letter-spacing: 0.02em; white-space: nowrap; font-variant-numeric: tabular-nums;
+      }
+      .text-ctrl .label.pop { animation: pop 0.3s cubic-bezier(0.2, 0.8, 0.2, 1.3); }
+      #controls button.ctrl.unavailable { opacity: 0.4; }
+
+      /* ---- menus (cameras, settings) ---- */
+      .menu-wrap { position: relative; }
+      .menu {
+        position: absolute; bottom: 84px; right: 0; width: 420px; box-sizing: border-box;
+        background: rgba(22,22,26,0.97); border: 1px solid #2a2a30; border-radius: 16px; padding: 10px;
+        box-shadow: 0 16px 40px rgba(0,0,0,0.55); font-family: "Barlow", "Segoe UI", sans-serif;
+        opacity: 0; visibility: hidden; transform: translateY(12px) scale(0.97); transform-origin: bottom right;
+        transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.24s;
+      }
+      .menu.open { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+      #camera-panel { max-height: 640px; overflow-y: auto; }
+      #camera-panel::-webkit-scrollbar { display: none; }
+      .menu-title {
+        padding: 10px 20px 8px; font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 700; font-size: 20px;
+        letter-spacing: 0.1em; text-transform: uppercase; color: #6c6c75;
+      }
+      .settings-row {
+        display: flex; justify-content: space-between; align-items: center; gap: 16px;
+        padding: 15px 20px; border-radius: 10px; cursor: pointer; outline: none;
+        font-size: 24px; font-weight: 500; transition: background-color 0.15s ease, color 0.15s ease;
+      }
+      .settings-row:hover, .settings-row:focus { background: #f2f2f2; color: #0b0b0d; }
+      .settings-row .value { color: #9b9ba4; font-size: 22px; font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 600; }
+      .settings-row:hover .value, .settings-row:focus .value { color: #55555e; }
+      /* Settings rows that open a list get a chevron. */
+      /* Settings rows: icon, name, then the current value and - for rows
+         that open a list - a chevron. */
+      .settings-row { justify-content: flex-start; gap: 18px; }
+      .settings-row .row-icon { flex: none; width: 30px; height: 30px; }
+      .settings-row .row-icon svg { width: 30px; height: 30px; fill: currentColor; display: block; }
+      .settings-row .row-name { flex: 1; min-width: 0; }
+      .settings-row .value { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+      .settings-row .value-hint { color: #6c6c75; }
+      .settings-row:hover .value-hint, .settings-row:focus .value-hint { color: #75757e; }
+      .settings-row.drill .value::after {
+        content: ""; width: 9px; height: 9px; margin: 0 4px 0 6px;
+        border-right: 3px solid currentColor; border-bottom: 3px solid currentColor; transform: rotate(-45deg);
+      }
+
+      /* Choice lists: a header (close, or back to Settings), then the
+         options with a check on the current one. */
+      #button-row { position: relative; }
+      #choice-panel { width: 380px; transform-origin: bottom right; }
+      .choice-head, .choice-row {
+        display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-radius: 10px;
+        font-size: 24px; cursor: pointer; outline: none; transition: background-color 0.15s ease, color 0.15s ease;
+      }
+      .choice-head { font-weight: 600; }
+      .choice-row { font-weight: 500; }
+      .choice-head svg, .choice-row .check svg { width: 26px; height: 26px; fill: currentColor; display: block; }
+      .choice-row .check { width: 26px; height: 26px; flex: none; visibility: hidden; }
+      .choice-row.selected .check { visibility: visible; }
+      .choice-row .hint {
+        margin-left: auto; color: #9b9ba4; font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 600; font-size: 22px;
+      }
+      .choice-sep { height: 1px; background: #2a2a30; margin: 4px 12px 6px; }
+      .choice-head:hover, .choice-head:focus, .choice-row:hover, .choice-row:focus { background: #f2f2f2; color: #0b0b0d; }
+      .choice-row:hover .hint, .choice-row:focus .hint { color: #55555e; }
+      .choice-row.disabled, .choice-row.disabled:hover { cursor: default; background: none; color: #6c6c75; font-size: 22px; }
+      /* Camera picker: grouped like the choice lists - main feeds, then one
+         group per team with a team-colour mark - with a check on the feed
+         that's playing. Rows reuse .choice-row. */
+      #camera-panel { width: 470px; max-height: 720px; }
+      .camera-group {
+        display: flex; align-items: center; gap: 16px; padding: 16px 20px 6px;
+        font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 700; font-size: 20px;
+        letter-spacing: 0.08em; text-transform: uppercase; color: #9b9ba4;
+      }
+      .camera-group:not(:first-child) { margin-top: 8px; border-top: 1px solid #2a2a30; padding-top: 18px; }
+      .camera-group .team-mark { width: 26px; height: 6px; border-radius: 3px; flex: none; }
+      .camera-row .code {
+        font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-weight: 700; font-size: 24px;
+        letter-spacing: 0.03em; min-width: 46px;
+      }
+      .camera-row .code:empty { display: none; }
+
+      /* Line-art icons (Material style) rather than emoji, which render as
+         inconsistent, colourful glyphs across browsers and TVs. */
+      .icon { width: 34px; height: 34px; fill: currentColor; display: block; }
+      #left-header a .icon { width: 20px; height: 20px; }
+
+      @media (prefers-reduced-motion: reduce) {
+        #controls, #controls *, .menu { transition: none !important; animation: none !important; }
+      }
+
+      /* Telemetry overlays - on demand, positioned so they don't sit over
+         the middle of the picture. Track map: transparent corner box per
+         the request that it not obstruct the feed. Timing tower: enough
+         background to stay readable over bright video, docked to a side
+         rather than transparent since it's mostly text. */
+      #track-map-overlay {
+        position: absolute; right: 20px; bottom: 190px; width: 340px; height: 340px;
+        display: none; pointer-events: none;
+      }
+      #track-map-overlay.visible { display: block; }
+      #track-map-overlay svg { width: 100%; height: 100%; }
+      #track-map-placeholder {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        text-align: center; font-size: 12px; opacity: 0.6; padding: 20px; box-sizing: border-box;
+      }
+
+      /* 2x the original size and footprint, and actually scrollable/
+         interactive now (pointer-events default, not none) so the Magic
+         Remote's scroll wheel works while hovering it - it used to be a
+         click-through HUD, which also meant it could never be scrolled. */
+      #timing-tower-overlay {
+        position: absolute; left: 20px; top: 20px; width: 920px; max-height: 92%;
+        background: rgba(10,10,12,0.82); border-radius: 14px; overflow-y: auto;
+        display: none; font-size: 22px; padding: 4px 0;
+        /* Shrinks toward its top-left corner while the control bar shows
+           (fitTowerAboveControls in watch.js), in step with the bar. */
+        transform-origin: 0 0; transition: transform 0.3s ease;
+      }
+      #timing-tower-overlay.visible { display: block; }
+      #timing-tower-rows { column-count: 2; column-gap: 4px; }
+      .tt-row {
+        padding: 8px 16px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        break-inside: avoid; -webkit-column-break-inside: avoid;
+      }
+      .tt-line1 { display: flex; align-items: center; gap: 12px; }
+      .tt-line2 { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding-left: 44px; }
+      .tt-pos { width: 30px; text-align: right; opacity: 0.6; font-family: monospace; }
+      .tt-swatch { width: 6px; height: 26px; border-radius: 3px; flex: none; }
+      .tt-tla { width: 62px; font-weight: bold; font-family: monospace; }
+      .tt-gap { flex: none; width: 90px; text-align: right; font-family: monospace; opacity: 0.85; font-size: 0.8em; }
+      .tt-lastlap { flex: 1; text-align: right; font-family: monospace; opacity: 0.85; font-size: 0.85em; }
+      .tt-lastlap.tt-green { color: #3ddc84; opacity: 1; }
+      .tt-lastlap.tt-purple { color: #c159f0; opacity: 1; }
+      .tt-tyre {
+        flex: none; width: 34px; height: 34px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 16px; font-weight: bold; font-family: monospace;
+      }
+      .tt-tyre sub { font-size: 12px; margin-left: 1px; bottom: -2px; }
+      .tt-sectors { display: flex; align-items: flex-end; flex: 1; gap: 14px; }
+      .tt-sector { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+      .tt-sector-ticks { display: flex; gap: 1px; }
+      .tt-sector-ticks i { display: block; width: 5px; height: 11px; border-radius: 1px; background: #333; }
+      .tt-sector-val { font-family: monospace; font-size: 0.7em; opacity: 0.85; }
+      .tt-sector-val.tt-green { color: #3ddc84; opacity: 1; }
+      .tt-sector-val.tt-purple { color: #c159f0; opacity: 1; }
+      .tt-seg-none { background: #333 !important; }
+      .tt-seg-yellow { background: #ffcc00 !important; }
+      .tt-seg-green { background: #3ddc84 !important; }
+      .tt-seg-purple { background: #c159f0 !important; }
+      .tt-seg-pit { background: #4aa3ff !important; }
+      .tt-telem { flex: none; font-family: monospace; font-size: 0.65em; opacity: 0.6; white-space: nowrap; margin-left: auto; }
+
+      #timing-tower-placeholder { padding: 14px; opacity: 0.6; font-size: 12px; }
+    </style>
+  </head>
+  <body data-back="browse.html">
+    <div id="wrap">
+      <div id="left" class="hidden-panel">
+        <div id="left-header">
+          <a href="browse.html" title="Back to Browse">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          </a>
+          <span class="brand">F1 HUD</span>
+        </div>
+        <h1>Manual load (debug)</h1>
+        <label>contentId</label>
+        <input id="content-id" placeholder="1000010563" />
+        <label>platform (optional override)</label>
+        <input id="platform" placeholder="BIG_SCREEN_HLS" />
+        <button id="load-btn">Load PLAY + feeds</button>
+        <div id="status">not loaded</div>
+        <div id="feeds"></div>
+      </div>
+      <div id="right">
+        <video id="video"></video>
+        <div id="stats" style="display:none"></div>
+        <div id="toast" role="status"></div>
+
+        <div id="timing-tower-overlay">
+          <div id="timing-tower-placeholder">Waiting for timing data&hellip;</div>
+          <div id="timing-tower-rows"></div>
+        </div>
+        <div id="track-map-overlay">
+          <div id="track-map-placeholder">Waiting for position data&hellip;</div>
+          <svg id="track-map-svg" viewBox="0 0 100 100"></svg>
+        </div>
+
+        <!-- Two rows, TV style: a full-width seek bar, then the buttons.
+             Up/Down moves between the rows; Left/Right seeks on the bar
+             and moves between buttons on the button row (watch.js). -->
+        <div id="controls">
+          <div id="seek-row">
+            <div id="time-current" class="time">0:00</div>
+            <div id="seek" tabindex="0" role="slider" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="seek-track"><div id="seek-buffered"></div><div id="seek-played"></div></div>
+              <div id="seek-thumb"></div>
+              <div id="seek-bubble">0:00</div>
+            </div>
+            <div id="time-total" class="time">0:00</div>
+          </div>
+          <div id="button-row">
+            <!-- Choice list for captions / resolution / speed, placed above
+                 whichever button opened it (watch.js openChoices). -->
+            <div id="choice-panel" class="menu"></div>
+            <div class="group">
+              <button id="playpause-btn" class="ctrl" title="Play/Pause">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+              </button>
+              <button id="mute-btn" class="ctrl" title="Mute">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zM16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.06c1.48-.74 2.5-2.26 2.5-4.03z"/></svg>
+              </button>
+              <!-- Pointer only: the remote has its own volume keys. -->
+              <input id="volume" type="range" min="0" max="1" step="0.01" value="1" tabindex="-1" />
+            </div>
+            <div class="group">
+              <button id="timing-tower-btn" class="ctrl" title="Timing tower">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M3 4h18v2H3zM3 11h18v2H3zM3 18h18v2H3z"/></svg>
+              </button>
+              <button id="track-map-btn" class="ctrl" title="Track map">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z"/></svg>
+              </button>
+              <div id="camera-wrap" class="menu-wrap">
+                <button id="camera-btn" class="ctrl" title="Camera / feed">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                </button>
+                <div id="camera-panel" class="menu">
+                  <div class="choice-head camera-head" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg><span>Cameras</span></div>
+                  <div class="choice-sep"></div>
+                  <div id="camera-rows"></div>
+                </div>
+              </div>
+              <button id="captions-btn" class="ctrl" title="Captions" hidden>
+                <svg class="icon" viewBox="0 0 24 24"><path d="M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1c0 .55-.45 1-1 1H7c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1zm7 0h-1.5v-.5h-2v3h2V13H18v1c0 .55-.45 1-1 1h-3c-.55 0-1-.45-1-1v-4c0-.55.45-1 1-1h3c.55 0 1 .45 1 1v1z"/></svg>
+              </button>
+              <button id="quality-btn" class="ctrl text-ctrl" title="Resolution" hidden><span class="label">Auto</span></button>
+              <button id="speed-btn" class="ctrl text-ctrl" title="Playback speed" hidden><span class="label">1x</span></button>
+              <div id="settings-wrap" class="menu-wrap">
+                <button id="settings-btn" class="ctrl" title="Settings">
+                  <svg class="icon" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                </button>
+                <div id="settings-panel" class="menu">
+                  <div class="settings-row" id="row-captions" tabindex="-1">
+                    <span class="row-icon" id="icon-captions"><svg viewBox="0 0 24 24"><path d="M6.83 4H19c1.1 0 2 .9 2 2v12c0 .05-.01.1-.02.16l-3.38-3.38c.24-.19.4-.46.4-.78v-1h-1.5v.5h-.18l-1.82-1.82V10.5h2v.5H18v-1c0-.55-.45-1-1-1h-3c-.55 0-1 .45-1 1v.17L6.83 4zm12.95 18.61L17.17 20H5c-1.11 0-2-.9-2-2V6c0-.05.02-.1.02-.15L1.39 4.22 2.8 2.81l18.38 18.38-1.4 1.42zM11 13.83L10.17 13H9.5v.5h-2v-3h.17L6.4 9.22c-.24.19-.4.46-.4.78v4c0 .55.45 1 1 1h3c.55 0 1-.45 1-1v-.17z"/></svg></span>
+                    <span class="row-name">Captions</span>
+                    <span class="value"><span id="val-captions">Off</span></span>
+                  </div>
+                  <div class="settings-row" id="row-resolution" tabindex="-1">
+                    <span class="row-icon"><svg viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg></span>
+                    <span class="row-name">Resolution</span>
+                    <span class="value"><span id="val-resolution">Off</span><span class="value-hint" id="hint-resolution"></span></span>
+                  </div>
+                  <div class="settings-row" id="row-language" tabindex="-1">
+                    <span class="row-icon"><svg viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95c-.32-1.25-.78-2.45-1.38-3.56 1.84.63 3.37 1.91 4.33 3.56zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2 0 .68.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56-1.84-.63-3.37-1.9-4.33-3.56zm2.95-8H5.08c.96-1.66 2.49-2.93 4.33-3.56C8.81 5.55 8.35 6.75 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2 0-.68.07-1.35.16-2h4.68c.09.65.16 1.32.16 2 0 .68-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95c-.96 1.65-2.49 2.93-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2 0-.68-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/></svg></span>
+                    <span class="row-name">Language</span>
+                    <span class="value"><span id="val-language">Off</span></span>
+                  </div>
+                  <div class="settings-row" id="row-speed" tabindex="-1">
+                    <span class="row-icon"><svg viewBox="0 0 24 24"><path d="M13.05 9.79 10 7.5v9l3.05-2.29L16 12l-2.95-2.21zM11 4.07V2.05c-2.01.2-3.84 1-5.32 2.21L7.1 5.69A7.94 7.94 0 0 1 11 4.07zM5.69 7.1 4.26 5.68A9.95 9.95 0 0 0 2.05 11h2.02c.18-1.46.76-2.79 1.62-3.9zM4.07 13H2.05c.2 2.01 1 3.84 2.21 5.32l1.43-1.43A7.87 7.87 0 0 1 4.07 13zm1.61 6.74C7.16 20.95 9 21.75 11 21.95v-2.02a7.94 7.94 0 0 1-3.9-1.62l-1.42 1.43zM22 12c0 5.16-3.92 9.42-8.95 9.95v-2.02C16.97 19.41 20 16.05 20 12s-3.03-7.41-6.95-7.93V2.05C18.08 2.58 22 6.84 22 12z"/></svg></span>
+                    <span class="row-name">Playback speed</span>
+                    <span class="value"><span id="val-speed">Off</span></span>
+                  </div>
+                  <div class="settings-row" id="row-stats" tabindex="-1">
+                    <span class="row-icon"><svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z"/></svg></span>
+                    <span class="row-name">Statistics</span>
+                    <span class="value"><span id="val-stats">Off</span></span>
+                  </div>
+                </div>
+              </div>
+              <!-- Opens the manual-load panel. Hidden unless the developer
+                   toggle on the sign-in screen is on (js/watch.js). -->
+              <button id="debug-btn" class="ctrl" title="Manual load" hidden>
+                <svg class="icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zM5 10h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="js/local-mock.js"></script>
+    <script src="js/resume.js"></script>
+    <script src="js/feeds.js"></script>
+    <script src="js/watch.js"></script>
+    <script src="js/overlays.js"></script>
+    <script src="js/back-nav.js"></script>
+  </body>
+</html>

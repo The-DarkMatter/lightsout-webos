@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>F1 HUD</title>
+    <script src="lib/webOSTVjs-1.2.4/webOSTV.js"></script>
+    <style>
+      html, body {
+        margin: 0; padding: 0; width: 1920px; height: 1080px;
+        background: #0b0b0d; color: #f2f2f2; font-family: sans-serif; overflow: hidden;
+      }
+      #splash {
+        height: 100%; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 18px;
+      }
+      #logo { color: #e10600; font-size: 40px; font-weight: bold; letter-spacing: 0.02em; }
+      #status { font-family: monospace; font-size: 14px; opacity: 0.6; }
+      #error { color: #ff5a5a; font-size: 14px; max-width: 700px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <div id="logo">F1 HUD</div>
+      <div id="status">starting&hellip;</div>
+      <div id="error"></div>
+    </div>
+    <script src="js/local-mock.js"></script>
+    <script src="js/router.js"></script>
+  </body>
+</html>

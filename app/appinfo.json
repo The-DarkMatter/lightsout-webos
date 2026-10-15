@@ -1,0 +1,14 @@
+{
+  "id": "com.amogh.f1hud",
+  "version": "0.0.1",
+  "vendor": "amogh",
+  "type": "web",
+  "main": "index.html",
+  "title": "F1 HUD",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "uiRevision": "3",
+  "resolution": "1920x1080",
+  "iconColor": "#e10600",
+  "disableBackHistoryAPI": true
+}

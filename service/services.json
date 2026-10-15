@@ -1,0 +1,9 @@
+{
+  "id": "com.amogh.f1hud.service",
+  "description": "F1 HUD on-TV service",
+  "services": [
+    {
+      "name": "com.amogh.f1hud.service"
+    }
+  ]
+}

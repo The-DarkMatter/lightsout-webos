@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  F1 HUD — webOS TV launcher icon ("Speed One")
+  Master artwork. Square, full bleed, opaque: webOS rounds the corners itself.
+  Render to app/icon.png (80), app/largeIcon.png (130), assets/app-icon.png (512).
+  Uses no Formula 1 trademarks, wordmarks or livery.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" width="360" height="360"
+     role="img" aria-label="F1 HUD">
+  <title>F1 HUD</title>
+
+  <!-- Ground: F1 red -->
+  <rect width="360" height="360" fill="#E10600"/>
+
+  <!-- Slipstream: two bars raked back under the numeral -->
+  <g transform="rotate(-20 180 180)">
+    <rect x="-80" y="198" width="520" height="20" rx="10" fill="#15151E" fill-opacity="0.55"/>
+    <rect x="-80" y="240" width="520" height="20" rx="10" fill="#15151E" fill-opacity="0.32"/>
+  </g>
+
+  <!-- Numeral one: italic stem + flag -->
+  <path d="M 176 74 L 257 74 L 212 292 L 132 292 Z" fill="#FFFFFF"/>
+  <path d="M 176 74 L 184 111 L 117 150 L 106 113 Z" fill="#FFFFFF"/>
+</svg>
