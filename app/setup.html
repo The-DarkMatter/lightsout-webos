@@ -21,6 +21,7 @@
       #qr-caption { font-size: 20px; margin-top: 14px; opacity: 0.8; }
       #url { font-family: monospace; font-size: 18px; margin-top: 6px; color: #ffcc00; word-break: break-all; }
       #pair { font-size: 20px; margin-top: 18px; opacity: 0.85; }
+      #disclaimer { position: absolute; left: 0; right: 0; bottom: 36px; text-align: center; font-size: 17px; opacity: 0.45; }
       #pair-code { display: block; font-family: monospace; font-size: 44px; letter-spacing: 0.12em; color: #f2f2f2; margin-top: 4px; }
       #status { font-size: 26px; padding: 14px 18px; border-radius: 10px; background: #16161a; border: 1px solid #2a2a30; }
       #status.ok { border-color: #1f6b3f; } #status.pending { border-color: #6b5a1f; } #status.fail { border-color: #6b1f1f; }
@@ -129,6 +130,10 @@
         <div id="url">resolving TV address&hellip;</div>
         <div id="pair" style="display:none">Pairing code <span id="pair-code"></span></div>
       </div>
+    </div>
+    <div id="disclaimer">
+      F1 HUD is an unofficial app, not affiliated with or endorsed by Formula 1. It needs your own
+      F1 TV subscription. F1 and F1 TV are trademarks of Formula One Licensing B.V.
     </div>
     <script src="js/luna.js"></script>
     <script src="js/setup.js"></script>
