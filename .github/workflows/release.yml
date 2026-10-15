@@ -40,7 +40,8 @@ jobs:
         run: |
           gh release download --repo webosbrew/dev-toolbox-cli --dir /tmp/toolbox \
             --pattern 'webosbrew-toolbox-gen-manifest_*_amd64.deb' \
-            --pattern 'webosbrew-toolbox-ipk-verify_*_amd64.deb'             --pattern 'webosbrew-toolbox-fw-symbols_*_amd64.deb'
+            --pattern 'webosbrew-toolbox-ipk-verify_*_amd64.deb' \
+            --pattern 'webosbrew-toolbox-fw-symbols_*_amd64.deb'
           sudo apt-get install -y /tmp/toolbox/*.deb
 
       - name: Check the tag matches the version
@@ -59,7 +60,7 @@ jobs:
       - name: Generate the manifest
         run: |
           id=$(node -p "require('./app/appinfo.json').id")
-          webosbrew-toolbox-gen-manifest \
+          webosbrew-gen-manifest \
             -p build/*.ipk \
             -o "build/$id.manifest.json" \
             -i "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_REF_NAME/assets/app-icon.png" \
@@ -73,7 +74,7 @@ jobs:
       - name: Compatibility report
         run: |
           set +e
-          webosbrew-toolbox-ipk-verify -f markdown -d -o build/compatibility.md build/*.ipk
+          webosbrew-ipk-verify -f markdown -d -o build/compatibility.md build/*.ipk
           code=$?
           set -e
           cat build/compatibility.md >> "$GITHUB_STEP_SUMMARY"
