@@ -11,7 +11,7 @@
 // use the canned mocks.
 //
 // Sign-in: the service's own setup server comes up on
-// http://localhost:8787/setup, bound to loopback. Log in on formula1.com in
+// http://localhost:8787/setup (with its pairing code), bound to loopback. Log in on formula1.com in
 // this PC's browser, then use that page's bookmark or paste form, exactly as
 // on a phone. The token is stored in .dev/state.json (gitignored), not
 // copied from the TV. The TV-browser import is TV-only and reports as
@@ -60,6 +60,7 @@ require(path.join(ROOT, "service", "index.js"));
 // Dev-only sign-in, behind the sign-in screen's paste box on this PC. Takes
 // either the login-session cookie value (URL-encoded JSON) or the bare token.
 var auth = require(path.join(ROOT, "service", "lib", "auth.js"));
+var setupServer = require(path.join(ROOT, "service", "lib", "setupServer.js"));
 handlers.devSaveToken = function (message) {
   var raw = String((message.payload && message.payload.token) || "").trim();
   var token = raw;
@@ -173,7 +174,7 @@ http
     console.log("");
     console.log("F1 HUD dev server (real F1 TV API)");
     console.log("  App:     http://localhost:" + PORT + "/browse.html");
-    console.log("  Sign in: http://localhost:8787/setup");
+    console.log("  Sign in: http://localhost:8787/setup?code=" + setupServer.pairingCode());
     console.log("  State:   " + process.env.F1HUD_STATE_DIR);
     console.log("");
   });

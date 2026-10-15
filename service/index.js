@@ -53,9 +53,12 @@ service.register("ping", function (message) {
   });
 });
 
-// Tells the app what to put in the QR code / on-screen fallback text.
+// Tells the app what to put in the QR code / on-screen fallback text. The
+// QR code carries the pairing code (lib/setupServer.js); the screen also
+// shows it on its own, for a browser that didn't come from the QR code.
 service.register("getSetupInfo", function (message) {
   var status = auth.status();
+  var pairingCode = setupServer.pairingCode();
   // Under scripts/dev-server.js there is no TV: the sign-in screen runs in
   // this PC's browser and signs in through a bookmark, with the setup
   // server on loopback.
@@ -65,6 +68,7 @@ service.register("getSetupInfo", function (message) {
       dev: true,
       setupUrl: "http://localhost:" + setupServer.PORT + "/setup",
       bookmarklet: setupServer.bookmarklet("localhost"),
+      pairingCode: pairingCode,
       hasToken: status.hasToken,
       tokenExpiresAt: status.expiresAt,
     });
@@ -75,6 +79,7 @@ service.register("getSetupInfo", function (message) {
     lanAddress: ip,
     setupUrl: ip ? "http://" + ip + ":" + setupServer.PORT + "/setup" : null,
     port: setupServer.PORT,
+    pairingCode: pairingCode,
     hasToken: status.hasToken,
     tokenExpiresAt: status.expiresAt,
   });

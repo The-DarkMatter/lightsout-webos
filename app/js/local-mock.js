@@ -140,7 +140,7 @@ var MOCKS = {
     };
   },
   getSetupInfo: function () {
-    return { returnValue: true, lanAddress: "127.0.0.1", setupUrl: "http://127.0.0.1:8787/setup", port: 8787, hasToken: true, tokenExpiresAt: null };
+    return { returnValue: true, lanAddress: "127.0.0.1", setupUrl: "http://127.0.0.1:8787/setup", port: 8787, pairingCode: "482913", hasToken: true, tokenExpiresAt: null };
   },
   f1tvPlayTest: function () { return MOCK_PLAY_RESPONSE; },
   liveTimingStart: function () { return { returnValue: true }; },

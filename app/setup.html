@@ -20,6 +20,8 @@
       #qr svg { display: block; width: 380px; height: 380px; }
       #qr-caption { font-size: 20px; margin-top: 14px; opacity: 0.8; }
       #url { font-family: monospace; font-size: 18px; margin-top: 6px; color: #ffcc00; word-break: break-all; }
+      #pair { font-size: 20px; margin-top: 18px; opacity: 0.85; }
+      #pair-code { display: block; font-family: monospace; font-size: 44px; letter-spacing: 0.12em; color: #f2f2f2; margin-top: 4px; }
       #status { font-size: 26px; padding: 14px 18px; border-radius: 10px; background: #16161a; border: 1px solid #2a2a30; }
       #status.ok { border-color: #1f6b3f; } #status.pending { border-color: #6b5a1f; } #status.fail { border-color: #6b1f1f; }
       #tv-browser-btn { font-size: 22px; padding: 14px 24px; margin-top: 14px; }
@@ -51,9 +53,10 @@
         <div id="tv-options">
         <h2>With your phone</h2>
         <p>
-          Scan the code. The page sets up a one-time bookmark. After that,
+          Scan the QR code. The page sets up a one-time bookmark. After that,
           signing in is: log in on formula1.com on your phone, then tap the
-          bookmark. Stay on this screen while you do it.
+          bookmark. Stay on this screen while you do it. If your phone asks
+          for a pairing code, it's the one under the QR code.
         </p>
 
         <h2>With the TV browser</h2>
@@ -75,7 +78,8 @@
           <button id="pc-save">Save sign-in</button><span id="pc-result"></span>
           <p style="margin-top:24px;font-size:18px">
             Or skip the copying: drag <a id="pc-bookmarklet" href="#">Send F1 to dev app</a> to your
-            bookmarks bar, then click it on the logged-in formula1.com tab.
+            bookmarks bar, then click it on the logged-in formula1.com tab. If it asks for a
+            pairing code, it's <code id="pc-pair-code"></code>.
           </p>
         </div>
 
@@ -112,6 +116,7 @@
         <div id="qr"></div>
         <div id="qr-caption">Scan with your phone</div>
         <div id="url">resolving TV address&hellip;</div>
+        <div id="pair" style="display:none">Pairing code <span id="pair-code"></span></div>
       </div>
     </div>
     <script src="js/local-mock.js"></script>

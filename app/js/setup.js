@@ -93,7 +93,10 @@ function init() {
         return;
       }
       document.getElementById("url").textContent = res.setupUrl;
-      renderQr(res.setupUrl);
+      // The QR code carries the pairing code, so a phone that scans it is
+      // never asked; it's also shown for one that didn't.
+      renderQr(res.pairingCode ? res.setupUrl + "?code=" + res.pairingCode : res.setupUrl);
+      showPairingCode(res.pairingCode);
     })
     .catch(function (err) {
       document.getElementById("url").textContent = "getSetupInfo failed: " + JSON.stringify(err);
@@ -115,6 +118,14 @@ function showPcSignIn(res) {
   link.addEventListener("click", function (e) {
     e.preventDefault(); // it's for dragging; run here it would find no F1 login
   });
+  document.getElementById("pc-pair-code").textContent = res.pairingCode || "";
+}
+
+// "123456" -> "123 456", easier to read across a room.
+function showPairingCode(code) {
+  if (!code) return;
+  document.getElementById("pair-code").textContent = code.slice(0, 3) + " " + code.slice(3);
+  document.getElementById("pair").style.display = "block";
 }
 
 document.getElementById("pc-save").addEventListener("click", function () {

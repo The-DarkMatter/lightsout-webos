@@ -15,16 +15,74 @@
 //
 // Pasting the token by hand stays available as a fallback.
 //
+// Anyone on the network can reach this port, so everything that shows or
+// changes the sign-in needs the pairing code from the TV's sign-in screen.
+// The QR code carries it, and the setup page remembers it in the phone's
+// browser for the bookmark's landing page; a browser that never scanned the
+// QR code asks for it once. It's six digits, stored so it survives the
+// service restarting, and five wrong guesses lock it for 30 seconds - which
+// puts guessing it at months of trying.
+//
 // Only runs while the app's service is alive. webOS stops an idle service
 // within seconds, and only the TV's sign-in screen polls it continuously, so
 // that screen has to be open while a phone sends a sign-in.
 
+var crypto = require("crypto");
 var http = require("http");
 var os = require("os");
 var url = require("url");
+var querystring = require("querystring");
 var auth = require("./auth");
+var store = require("./store");
 
 var PORT = 8787;
+var CODE_KEY = "setup_pairing_code";
+var CODE_STORAGE_KEY = "f1hud.setupCode"; // localStorage, on the phone
+var MAX_WRONG_CODES = 5;
+var LOCKOUT_MS = 30 * 1000;
+
+var wrongCodes = 0;
+var lockedUntil = 0;
+
+function pairingCode() {
+  var code = store.get(CODE_KEY);
+  if (!/^\d{6}$/.test(code || "")) {
+    code = String(crypto.randomBytes(4).readUInt32BE(0) % 1000000);
+    while (code.length < 6) code = "0" + code;
+    store.set(CODE_KEY, code);
+  }
+  return code;
+}
+
+function normaliseCode(given) {
+  return String(given || "").replace(/\s/g, "");
+}
+
+// "ok", "missing", "wrong" or "locked". A missing code is someone who
+// hasn't been asked yet, so it doesn't count towards the lockout. Spaces
+// are ignored: the TV shows the code as "123 456".
+function checkCode(given) {
+  given = normaliseCode(given);
+  if (Date.now() < lockedUntil) return "locked";
+  if (!given) return "missing";
+  if (given === pairingCode()) {
+    wrongCodes = 0;
+    return "ok";
+  }
+  wrongCodes++;
+  if (wrongCodes >= MAX_WRONG_CODES) {
+    wrongCodes = 0;
+    lockedUntil = Date.now() + LOCKOUT_MS;
+    return "locked";
+  }
+  return "wrong";
+}
+
+function codeProblem(result) {
+  if (result === "locked") return "Too many wrong codes. Wait 30 seconds, then try again.";
+  if (result === "wrong") return "That code doesn't match the one on the TV.";
+  return null;
+}
 
 function getLanAddress() {
   var ifaces = os.networkInterfaces();
@@ -125,7 +183,43 @@ var STYLE =
   "button.secondary{background:#2a2a30}" +
   ".card{padding:12px 14px;border-radius:10px;margin-bottom:8px;background:#16161a;border:1px solid #2a2a30}" +
   ".ok{border-color:#1f6b3f;color:#3ddc84}.warn{border-color:#6b5a1f;color:#ffcc00}.bad{border-color:#6b1f1f;color:#ff7a7a}" +
-  "details{margin-top:28px}summary{cursor:pointer;opacity:.7}code{background:#16161a;padding:1px 5px;border-radius:4px}";
+  "details{margin-top:28px}summary{cursor:pointer;opacity:.7}code{background:#16161a;padding:1px 5px;border-radius:4px}" +
+  "input.code{font-size:28px;letter-spacing:.2em;width:9em;padding:8px 10px;background:#16161a;color:#f2f2f2;" +
+  "border:1px solid #2a2a30;border-radius:8px}" +
+  "footer{margin-top:40px;font-size:12px;opacity:.55}";
+
+var FOOTER =
+  "<footer>F1 HUD is an unofficial app, not affiliated with or endorsed by Formula 1. It needs your own " +
+  "F1 TV subscription. F1 and F1 TV are trademarks of Formula One Licensing B.V.</footer>";
+
+function pageHead(title) {
+  return (
+    "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
+    "<meta name='viewport' content='width=device-width,initial-scale=1'>" +
+    "<title>" + escapeHtml(title) + "</title><style>" + STYLE + "</style></head><body>"
+  );
+}
+
+// Asks for the pairing code. A browser that has it stored from an earlier
+// visit goes straight through, unless that stored code was just refused.
+function codePage(problem) {
+  return (
+    pageHead("F1 HUD sign-in") +
+    "<h1>Sign the TV in to F1 TV</h1>" +
+    (problem ? "<div class='card bad'>" + escapeHtml(problem) + "</div>" : "") +
+    "<p>Enter the code shown on the TV, on the F1 HUD app's sign-in screen.</p>" +
+    "<form method='GET' action='/setup'>" +
+    "<input class='code' name='code' inputmode='numeric' autocomplete='off' placeholder='123 456' autofocus><br>" +
+    "<button type='submit'>Continue</button></form>" +
+    "<script>(function(){var k='" + CODE_STORAGE_KEY + "';try{" +
+    (problem
+      ? "localStorage.removeItem(k);"
+      : "var c=localStorage.getItem(k);if(c)location.replace('/setup?code='+encodeURIComponent(c));") +
+    "}catch(e){}})();</script>" +
+    FOOTER +
+    "</body></html>"
+  );
+}
 
 // Renders an ISO date in the phone's own locale and time zone.
 var LOCAL_TIME_SCRIPT =
@@ -162,13 +256,11 @@ function statusCard(status) {
   return "<div class='card bad'>The TV isn't signed in yet.</div>";
 }
 
-function setupPage(host, message) {
+function setupPage(host, message, pairing) {
   var status = auth.status();
   var code = bookmarklet(host);
   return (
-    "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
-    "<meta name='viewport' content='width=device-width,initial-scale=1'>" +
-    "<title>F1 HUD sign-in</title><style>" + STYLE + "</style></head><body>" +
+    pageHead("F1 HUD sign-in") +
     "<h1>Sign the TV in to F1 TV</h1>" +
     (message ? "<div class='card " + (message.saved ? "ok" : "bad") + "'>" + escapeHtml(message.message) + "</div>" : "") +
     statusCard(status) +
@@ -202,6 +294,7 @@ function setupPage(host, message) {
 
     "<details><summary>Paste a token by hand instead</summary>" +
     "<form method='POST' action='/setup'>" +
+    "<input type='hidden' name='code' value='" + escapeHtml(pairing) + "'>" +
     "<p>The subscription token is the <code>data.subscriptionToken</code> value inside the " +
     "<code>login-session</code> cookie on formula1.com.</p>" +
     "<textarea name='token' placeholder='eyJ...'></textarea><br>" +
@@ -209,34 +302,53 @@ function setupPage(host, message) {
 
     "<script>document.getElementById('copy').onclick=function(){var t=document.getElementById('code');" +
     "t.focus();t.select();t.setSelectionRange(0,t.value.length);var ok=false;try{ok=document.execCommand('copy');}catch(e){}" +
-    "document.getElementById('copied').textContent=ok?'Copied':'Select the text and copy it';};</script>" +
+    "document.getElementById('copied').textContent=ok?'Copied':'Select the text and copy it';};" +
+    // For the bookmark's landing page, which arrives without the code.
+    "try{localStorage.setItem('" + CODE_STORAGE_KEY + "'," + JSON.stringify(pairing) + ");}catch(e){}</script>" +
     LOCAL_TIME_SCRIPT +
+    FOOTER +
     "</body></html>"
   );
 }
 
 // Landing page for the bookmarklet. The token arrives in the fragment,
-// gets posted back to this server, and is then wiped from the address bar
-// and history.
+// gets posted back to this server with the pairing code the setup page
+// stored, and is then wiped from the address bar and history. Without a
+// stored code - or with one the TV refuses - it asks for the code and posts
+// again, holding the token in the page meanwhile.
 function receivePage() {
   return (
-    "<!DOCTYPE html><html><head><meta charset='utf-8'>" +
-    "<meta name='viewport' content='width=device-width,initial-scale=1'>" +
-    "<title>F1 HUD sign-in</title><style>" + STYLE + "</style></head><body>" +
+    pageHead("F1 HUD sign-in") +
     "<h1>Sending your sign-in to the TV</h1>" +
     "<div id='result' class='card'>Sending&hellip;</div>" +
+    "<form id='ask' style='display:none'>" +
+    "<p>Enter the code shown on the TV, on the F1 HUD app's sign-in screen.</p>" +
+    "<input class='code' id='code' inputmode='numeric' autocomplete='off' placeholder='123 456'><br>" +
+    "<button type='submit'>Send</button></form>" +
     "<p><a href='/setup' style='color:#e10600'>Sign-in page</a></p>" +
     "<script>(function(){" +
-    "var el=document.getElementById('result');" +
+    "var K='" + CODE_STORAGE_KEY + "';" +
+    "var el=document.getElementById('result'),ask=document.getElementById('ask'),input=document.getElementById('code');" +
     "var m=/[#&]t=([^&]+)/.exec(location.hash);" +
     "history.replaceState(null,'',location.pathname);" +
     "if(!m){el.className='card bad';el.textContent='No sign-in arrived. Run the bookmark from a logged-in formula1.com page.';return;}" +
+    "var token=decodeURIComponent(m[1]);" +
+    "function stored(){try{return localStorage.getItem(K);}catch(e){return null;}}" +
+    "function askForCode(text){el.className='card'+(text?' bad':'');el.textContent=text||'The TV needs its pairing code first.';" +
+    "ask.style.display='block';input.value='';input.focus();}" +
+    "function send(code){el.className='card';el.textContent='Sending\\u2026';ask.style.display='none';" +
     "var x=new XMLHttpRequest();x.open('POST','/setup/token');x.setRequestHeader('Content-Type','application/json');" +
     "x.onload=function(){var r={};try{r=JSON.parse(x.responseText);}catch(e){}" +
+    "if(r.badCode){try{localStorage.removeItem(K);}catch(e){}return askForCode(r.message);}" +
+    "try{localStorage.setItem(K,code);}catch(e){}" +
     "el.className='card '+(r.saved?'ok':'bad');el.textContent=r.message||('Unexpected reply ('+x.status+')');};" +
     "x.onerror=function(){el.className='card bad';el.textContent='Could not reach the TV. Open the sign-in screen in the F1 HUD app, then tap the bookmark again.';};" +
-    "x.send(JSON.stringify({token:decodeURIComponent(m[1])}));" +
-    "})();</script></body></html>"
+    "x.send(JSON.stringify({token:token,code:code}));}" +
+    "ask.onsubmit=function(e){e.preventDefault();var c=input.value.replace(/\\s/g,'');if(c)send(c);};" +
+    "var c=stored();if(c)send(c);else askForCode();" +
+    "})();</script>" +
+    FOOTER +
+    "</body></html>"
   );
 }
 
@@ -249,8 +361,10 @@ function start() {
     var host = String(req.headers.host || "").replace(/:\d+$/, "") || getLanAddress() || "localhost";
 
     if (req.method === "GET" && parsed.pathname === "/setup") {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-      res.end(setupPage(host, null));
+      var given = querystring.parse(parsed.query || "").code;
+      var check = checkCode(given);
+      res.writeHead(check === "ok" ? 200 : 403, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(check === "ok" ? setupPage(host, null, normaliseCode(given)) : codePage(codeProblem(check)));
       return;
     }
 
@@ -260,16 +374,17 @@ function start() {
       return;
     }
 
-    if (req.method === "GET" && parsed.pathname === "/setup/status.json") {
-      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      res.end(JSON.stringify(auth.status()));
-      return;
-    }
-
     // Bookmarklet route (JSON in, JSON out).
     if (req.method === "POST" && parsed.pathname === "/setup/token") {
       readBody(req, function (body) {
-        saveResult(parseFormOrJson(req, body).token, function (result) {
+        var form = parseFormOrJson(req, body);
+        var check = checkCode(form.code);
+        if (check !== "ok") {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ saved: false, badCode: true, message: codeProblem(check) || "The TV needs its pairing code." }));
+          return;
+        }
+        saveResult(form.token, function (result) {
           res.writeHead(result.saved ? 200 : 400, { "Content-Type": "application/json" });
           res.end(JSON.stringify(result));
         });
@@ -280,9 +395,16 @@ function start() {
     // Manual paste form.
     if (req.method === "POST" && parsed.pathname === "/setup") {
       readBody(req, function (body) {
-        saveResult(parseFormOrJson(req, body).token, function (result) {
+        var form = parseFormOrJson(req, body);
+        var check = checkCode(form.code);
+        if (check !== "ok") {
+          res.writeHead(403, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(codePage(codeProblem(check)));
+          return;
+        }
+        saveResult(form.token, function (result) {
           res.writeHead(result.saved ? 200 : 400, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(setupPage(host, result));
+          res.end(setupPage(host, result, normaliseCode(form.code)));
         });
       });
       return;
@@ -308,6 +430,7 @@ function start() {
 
 module.exports = {
   start: start,
+  pairingCode: pairingCode,
   getLanAddress: getLanAddress,
   bookmarklet: bookmarklet,
   PORT: PORT,
