@@ -9,8 +9,8 @@
 // what keeps the service - and the LAN setup page with it - alive while a
 // phone is being used.
 
-// callService() (real Luna on-device, mocked in a plain browser) comes
-// from js/local-mock.js, loaded before this file.
+// callService() (Luna on the TV, the dev server on a PC) comes
+// from js/luna.js, loaded before this file.
 
 var F1_LOGIN_URL = "https://account.formula1.com/#/en/login";
 

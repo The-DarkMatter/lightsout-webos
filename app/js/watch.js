@@ -14,8 +14,8 @@
 // (resultObj.entitlementToken) for this exact purpose, so no new
 // plumbing was needed to get it there.
 
-// callService() (real Luna on-device, mocked in a plain browser) comes
-// from js/local-mock.js, loaded before this file.
+// callService() (Luna on the TV, the dev server on a PC) comes
+// from js/luna.js, loaded before this file.
 
 function setStatus(text, cls) {
   var el = document.getElementById("status");

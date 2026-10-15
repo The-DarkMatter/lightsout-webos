@@ -1,19 +1,20 @@
-// Shared local-browser preview layer. webOSTV.js always defines
-// window.webOS regardless of environment - the real signal for "are we
-// inside actual webOS" is window.PalmServiceBridge, the native bridge
-// object that only exists in the real runtime. When it's missing (a
-// normal desktop browser), every page's callService() call is answered
-// from MOCKS below instead of erroring out, so layout, navigation, and
-// overlay rendering can all be iterated on without the TV.
+// Canned answers for every service method, so pages can be laid out and
+// clicked through on a PC with no TV and no F1 TV sign-in:
 //
-// This only fakes the Luna layer. Video playback still needs a real,
-// reachable manifest - the f1tvPlayTest mock below points at a public,
-// unencrypted, CORS-friendly HLS test stream (Shaka Player's own demo asset)
-// specifically so Shaka has something real to load in a plain browser,
-// not just placeholder data.
+//   node scripts/dev-server.js --mock
 //
-// Real on-device behavior is completely unaffected: this file only ever
-// substitutes anything when PalmServiceBridge is absent.
+// The dev server injects this file ahead of js/luna.js, whose callService()
+// then answers from here instead of the service. It lives outside app/, so
+// it never ships in the package.
+//
+// Preview switches, as page query parameters:
+//   ?auth=expiring|expired|none   sign-in states
+//   ?root=0                       a TV without Homebrew Channel
+//   ?tvb=1                        the TV-browser import already allowed
+//
+// Video still needs a real, reachable manifest - the f1tvPlayTest mock below
+// points at a public, unencrypted, CORS-friendly HLS test stream (Shaka
+// Player's own demo asset) so Shaka has something real to load.
 
 // A real, playable manifest is one specific file on Shaka's public demo bucket -
 // there's no way to locally fake 20 different playable feeds. Each mock
@@ -119,11 +120,11 @@ function mockTrackMap() {
 var mockTvBrowserImport = new URLSearchParams(window.location.search).get("tvb") === "1";
 
 var MOCKS = {
-  // Offline page data: define MOCK_BROWSE_PAGE in a script loaded before this one.
+  // Browse page and season list: dev/mock-browse.js, injected before this file.
   f1tvPage: function () {
     return typeof MOCK_BROWSE_PAGE !== "undefined" ? MOCK_BROWSE_PAGE : { returnValue: false, errorText: "no offline page data on this screen" };
   },
-  // Offline season lists: MOCK_SEASONS[year]. Missing years come back empty.
+  // Missing years come back empty.
   f1tvSeason: function (p) {
     var year = p && p.season;
     return (typeof MOCK_SEASONS !== "undefined" && MOCK_SEASONS[year]) || { returnValue: true, season: year, meetings: [] };
@@ -176,66 +177,13 @@ var MOCKS = {
   },
 };
 
-// Every page is a fixed 1920x1080 canvas with overflow:hidden - correct
-// for how webOS scales a TV app to the panel, but in a normal browser
-// window that's not 1920x1080, overflow:hidden means the excess is
-// clipped and invisible, not just scrollable. Auto-scale the whole page
-// to fit the actual window, only when not running in real webOS (the TV
-// always gets the untouched, unscaled canvas).
-function fitToWindow() {
-  if (window.PalmServiceBridge) return;
-  var scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080, 1);
-  document.body.style.transformOrigin = "top left";
-  document.body.style.transform = "scale(" + scale + ")";
-}
-if (!window.PalmServiceBridge) {
-  window.addEventListener("resize", fitToWindow);
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", fitToWindow);
-  } else {
-    fitToWindow();
-  }
-}
-
-function callService(method, parameters) {
-  if (window.PalmServiceBridge) {
-    return new Promise(function (resolve, reject) {
-      webOS.service.request("luna://com.amogh.f1hud.service", {
-        method: method,
-        parameters: parameters || {},
-        onSuccess: resolve,
-        onFailure: reject,
-      });
-    });
-  }
-  // Served over http by scripts/dev-server.js: the real service code answers
-  // at /api/<method>, against the real F1 TV API. It marks its responses
-  // with X-F1HUD-Dev, so any other static server falls through to the mocks.
-  // returnValue:false rejects, as Luna's onFailure does on the TV.
-  if (/^https?:$/.test(window.location.protocol)) {
-    return fetch("/api/" + method, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(parameters || {}),
-    })
-      .then(function (res) {
-        if (!res.headers.get("X-F1HUD-Dev")) return mockResponse(method, parameters);
-        return res.json().then(function (body) {
-          if (body && body.returnValue === false) throw body;
-          return body;
-        });
-      }, function () {
-        return mockResponse(method, parameters);
-      });
-  }
-  return mockResponse(method, parameters);
-}
-
 function mockResponse(method, parameters) {
   var mock = MOCKS[method];
   if (!mock) {
-    console.warn("[local-mock] no mock registered for '" + method + "' - rejecting");
+    console.warn("[mocks] no mock registered for '" + method + "' - rejecting");
     return Promise.reject({ errorText: "no local mock for " + method, errorCode: -1 });
   }
   return Promise.resolve(mock(parameters));
 }
+
+window.F1HUD_MOCKS = { respond: mockResponse };

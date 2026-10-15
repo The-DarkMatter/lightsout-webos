@@ -9,8 +9,8 @@ function setError(text) {
   document.getElementById("error").textContent = text;
 }
 
-// callService() (real Luna on-device, mocked in a plain browser) comes
-// from js/local-mock.js, loaded before this file.
+// callService() (Luna on the TV, the dev server on a PC) comes
+// from js/luna.js, loaded before this file.
 
 setStatus("checking pairing status…");
 callService("getAuthStatus")

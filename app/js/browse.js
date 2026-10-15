@@ -21,8 +21,8 @@
 var currentPageId = null;
 var currentMeeting = null;
 
-// callService() (real Luna on-device, mocked in a plain browser) comes
-// from js/local-mock.js, loaded before this file.
+// callService() (Luna on the TV, the dev server on a PC) comes
+// from js/luna.js, loaded before this file.
 
 var SERIES = {
   F1: { name: "Formula 1", color: "#e10600", tint: [42, 15, 14] },
