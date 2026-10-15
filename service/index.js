@@ -15,6 +15,7 @@ var f1tv = require("./lib/f1tv");
 var livetiming = require("./lib/livetiming");
 var archive = require("./lib/archive");
 var auth = require("./lib/auth");
+var failure = require("./lib/failure");
 
 var service = new Service(pkgInfo.name);
 var startedAt = Date.now();
@@ -35,10 +36,27 @@ function withToken(message, run) {
         returnValue: false,
         errorText: state.expired || state.hasToken ? "F1 TV sign-in expired" : "no token stored",
         needsSignIn: true,
+        reason: "signin",
       });
     }
     run(token);
   });
+}
+
+// The entitlement token every catalogue call needs. Rejects with a failure
+// reply (lib/failure.js) when F1 won't issue one - a refused sign-in shows
+// up here first.
+function entitlementFor(token) {
+  return f1tv.getEntitlement(token).then(function (entRes) {
+    var entitlementToken = entRes.body && entRes.body.resultObj && entRes.body.resultObj.entitlementToken;
+    if (!entitlementToken) throw failure.fromResponse(entRes, "F1 TV entitlement");
+    return entitlementToken;
+  });
+}
+
+// A failure reply as it stands, or a thrown error turned into one.
+function asFailure(err, what) {
+  return err && err.returnValue === false ? err : failure.fromError(err, what);
 }
 
 service.register("ping", function (message) {
@@ -163,7 +181,7 @@ service.register("f1tvPlayTest", function (message) {
       var entitlementToken = entRes.body && entRes.body.resultObj && entRes.body.resultObj.entitlementToken;
       if (!entitlementToken) {
         result.entitlement.body = entRes.body;
-        return null;
+        return failure.fromResponse(entRes, "F1 TV entitlement");
       }
       // PLAY and the content's details in parallel. Details only name the
       // feeds, so a failure there must never stop playback.
@@ -185,13 +203,20 @@ service.register("f1tvPlayTest", function (message) {
           if (playRes.body && playRes.body.resultObj && playRes.body.resultObj.laURL) {
             result.ascendontoken = token;
           }
+          if (playRes.statusCode !== 200) return failure.fromResponse(playRes, "F1 TV PLAY");
+          if (!playRes.body || !playRes.body.resultObj || !playRes.body.resultObj.tme) {
+            return { returnValue: false, reason: "changed", errorText: "F1 TV PLAY answered without any feeds" };
+          }
+          return null;
         });
     })
-    .then(function () {
+    .then(function (failed) {
+      // A failure still carries what came back, for the player's debug panel.
+      if (failed) return message.respond(Object.assign(failed, { result: result }));
       message.respond({ returnValue: true, result: result });
     })
     .catch(function (err) {
-      message.respond({ returnValue: false, errorText: String(err), result: result });
+      message.respond(Object.assign(failure.fromError(err, "F1 TV PLAY"), { result: result }));
     });
   });
 });
@@ -224,20 +249,16 @@ service.register("f1tvSeason", function (message) {
   var season = message.payload && message.payload.season;
   if (!season) return message.respond({ returnValue: false, errorText: "missing 'season' parameter" });
   withToken(message, function (token) {
-  f1tv
-    .getEntitlement(token)
-    .then(function (entRes) {
-      var entitlementToken = entRes.body && entRes.body.resultObj && entRes.body.resultObj.entitlementToken;
+  entitlementFor(token)
+    .then(function (entitlementToken) {
       return f1tv.getSeason(season, token, entitlementToken);
     })
     .then(function (res) {
-      if (res.statusCode !== 200) {
-        return message.respond({ returnValue: false, errorText: "season search returned " + res.statusCode });
-      }
+      if (res.statusCode !== 200) return message.respond(failure.fromResponse(res, "F1 TV season search"));
       message.respond({ returnValue: true, season: Number(season), meetings: meetingsFromSearch(res) });
     })
     .catch(function (err) {
-      message.respond({ returnValue: false, errorText: String(err) });
+      message.respond(asFailure(err, "F1 TV season search"));
     });
   });
 });
@@ -251,10 +272,8 @@ service.register("f1tvPage", function (message) {
   if (!pageId) return message.respond({ returnValue: false, errorText: "missing 'pageId' parameter" });
 
   withToken(message, function (token) {
-  f1tv
-    .getEntitlement(token)
-    .then(function (entRes) {
-      var entitlementToken = entRes.body && entRes.body.resultObj && entRes.body.resultObj.entitlementToken;
+  entitlementFor(token)
+    .then(function (entitlementToken) {
       return f1tv.getPage(
         pageId,
         payload.subscriptionTier || "PREMIUM",
@@ -265,10 +284,11 @@ service.register("f1tvPage", function (message) {
       );
     })
     .then(function (pageRes) {
+      if (pageRes.statusCode !== 200) return message.respond(failure.fromResponse(pageRes, "F1 TV page " + pageId));
       message.respond({ returnValue: true, statusCode: pageRes.statusCode, body: pageRes.body });
     })
     .catch(function (err) {
-      message.respond({ returnValue: false, errorText: String(err) });
+      message.respond(asFailure(err, "F1 TV page " + pageId));
     });
   });
 });

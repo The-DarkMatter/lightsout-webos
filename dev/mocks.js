@@ -11,6 +11,10 @@
 //   ?auth=expiring|expired|none   sign-in states
 //   ?root=0                       a TV without Homebrew Channel
 //   ?tvb=1                        the TV-browser import already allowed
+//   ?fail=<reason>                Browse and the player fail as F1 TV would:
+//                                 signin, subscription, region, unavailable,
+//                                 network, changed - or player, a feed that
+//                                 won't load
 //
 // Video still needs a real, reachable manifest - the f1tvPlayTest mock below
 // points at a public, unencrypted, CORS-friendly HLS test stream (Shaka
@@ -177,13 +181,30 @@ var MOCKS = {
   },
 };
 
+var MOCK_FAIL = new URLSearchParams(window.location.search).get("fail");
+var F1_CALLS = { f1tvPage: true, f1tvSeason: true, f1tvPlayTest: true };
+
+// returnValue:false rejects, as Luna does on the TV.
 function mockResponse(method, parameters) {
   var mock = MOCKS[method];
   if (!mock) {
     console.warn("[mocks] no mock registered for '" + method + "' - rejecting");
     return Promise.reject({ errorText: "no local mock for " + method, errorCode: -1 });
   }
-  return Promise.resolve(mock(parameters));
+  if (MOCK_FAIL && MOCK_FAIL !== "player" && F1_CALLS[method]) {
+    return Promise.reject({
+      returnValue: false,
+      reason: MOCK_FAIL,
+      needsSignIn: MOCK_FAIL === "signin",
+      f1Message: MOCK_FAIL === "network" ? "" : "Sample message from F1 TV",
+      errorText: "mock failure: " + MOCK_FAIL,
+    });
+  }
+  var result = mock(parameters);
+  if (MOCK_FAIL === "player" && method === "f1tvPlayTest") {
+    result = JSON.parse(JSON.stringify(result).split(REAL_STREAM).join("http://127.0.0.1:9/missing.m3u8"));
+  }
+  return result && result.returnValue === false ? Promise.reject(result) : Promise.resolve(result);
 }
 
 window.F1HUD_MOCKS = { respond: mockResponse };

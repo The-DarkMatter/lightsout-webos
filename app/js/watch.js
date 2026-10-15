@@ -23,6 +23,35 @@ function setStatus(text, cls) {
   el.className = cls || "";
 }
 
+// The card that says why nothing is playing (words from js/errors.js).
+// The debug panel's status line keeps the technical detail.
+var failureEl = document.getElementById("failure");
+
+// opts.camera: offer the camera menu, when one feed failed but others exist.
+function showFailure(why, opts) {
+  document.getElementById("failure-title").textContent = why.title;
+  document.getElementById("failure-text").textContent = why.text;
+  document.getElementById("failure-camera").hidden = !(opts && opts.camera);
+  document.getElementById("failure-signin").hidden = !why.signIn;
+  failureEl.hidden = false;
+  failureLinks()[0].focus();
+}
+
+function hideFailure() {
+  failureEl.hidden = true;
+}
+
+document.getElementById("failure-camera").addEventListener("click", function (e) {
+  e.preventDefault();
+  hideFailure();
+  showControls();
+  toggleMenu(MENUS[0], true);
+});
+
+function failureLinks() {
+  return Array.prototype.slice.call(failureEl.querySelectorAll("a")).filter(function (a) { return !a.hidden; });
+}
+
 var player = null;
 var video = document.getElementById("video");
 var currentFeeds = [];
@@ -153,6 +182,7 @@ function playUrl(url, drm, opts) {
     .then(function () {
       if (ticket !== loadTicket) return; // a newer feed switch has already started
       feedLoading = false;
+      hideFailure();
       setStatus("loaded, playing", "ok");
       video.playbackRate = opts.rate || 1;
       if (opts.captionLanguage) {
@@ -190,6 +220,8 @@ function playUrl(url, drm, opts) {
         " String()=" + String(err) +
         " JSON=" + JSON.stringify(err);
       setStatus("load/play failed: " + diag, "fail");
+      feedLoading = false;
+      showFailure(explainPlayerError(err), { camera: currentFeeds.length > 1 });
     });
 }
 
@@ -972,6 +1004,7 @@ function loadContent(contentId, platform) {
     })
     .catch(function (err) {
       setStatus("service call failed: " + JSON.stringify(err), "fail");
+      showFailure(explainFailure(err));
     });
 }
 
@@ -1154,6 +1187,21 @@ window.addEventListener(
     var active = document.activeElement;
     // Typing in the debug sidebar's text fields: leave keys alone.
     if (active && active.tagName === "INPUT" && active.type === "text") return;
+
+    // The failure card takes the arrows and OK; Back still leaves.
+    if (!failureEl.hidden && k !== KEY.BACK && k !== KEY.ESCAPE) {
+      var links = failureLinks();
+      var at = links.indexOf(active);
+      if (k === KEY.LEFT || k === KEY.UP || k === KEY.RIGHT || k === KEY.DOWN) {
+        stop(e);
+        var step = k === KEY.LEFT || k === KEY.UP ? -1 : 1;
+        links[Math.max(0, Math.min(links.length - 1, at === -1 ? 0 : at + step))].focus();
+      } else if (k === KEY.ENTER) {
+        stop(e);
+        (links[at] || links[0]).click();
+      }
+      return;
+    }
 
     if (k === KEY.PLAY || k === KEY.PAUSE || k === KEY.PLAY_PAUSE) {
       stop(e);

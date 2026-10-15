@@ -899,10 +899,12 @@ function loadAndRender(manual) {
   var refresh = document.getElementById("refresh-link");
   if (manual === true) refresh.classList.add("busy");
 
-  function failed(message) {
+  // err: the failed reply, explained by js/errors.js.
+  function failed(err) {
     if (shownSignature === null) {
+      var why = explainFailure(err);
       document.body.classList.remove("is-loading");
-      setStatus(message, "fail");
+      setStatus(why.title + ". " + why.text, "fail");
     } else {
       var when = shownFetchedAt ? savedAtText(shownFetchedAt) : "";
       setStatus("Couldn't refresh from F1 TV" + (when ? " - showing the page from " + when : "") + ".", "note");
@@ -914,7 +916,7 @@ function loadAndRender(manual) {
     .then(function (res) {
       if (pageId !== currentPageId) return; // switched weekends meanwhile
       if (!res.returnValue) {
-        failed("Couldn't load F1 TV: " + (res.errorText || "status " + res.statusCode));
+        failed(res);
         return;
       }
       var trays = (res.body && res.body.resultObj && res.body.resultObj.containers) || [];
@@ -926,7 +928,7 @@ function loadAndRender(manual) {
     })
     .catch(function (err) {
       if (pageId !== currentPageId) return;
-      failed("Couldn't reach the app's service: " + ((err && err.errorText) || JSON.stringify(err)));
+      failed(err);
     })
     .then(function () {
       if (inFlight === request) {

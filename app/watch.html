@@ -60,6 +60,23 @@
       }
       #toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+      /* Why nothing is playing, with the way out (js/errors.js words it). */
+      #failure {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20;
+        width: 900px; box-sizing: border-box; padding: 40px 48px; border-radius: 18px;
+        background: rgba(22,22,26,0.96); border: 1px solid #2a2a30;
+        font-family: "Barlow", "Segoe UI", sans-serif;
+      }
+      #failure[hidden] { display: none; }
+      #failure h2 { margin: 0 0 14px; font-size: 40px; font-weight: 700; color: #f2f2f2; }
+      #failure p { margin: 0; font-size: 26px; line-height: 1.45; color: #c8c8cc; }
+      #failure .actions { margin-top: 30px; display: flex; gap: 18px; }
+      #failure a {
+        padding: 14px 30px; border-radius: 999px; font-size: 24px; font-weight: 600; text-decoration: none;
+        background: #2a2a30; color: #f2f2f2;
+      }
+      #failure a:focus { background: #f2f2f2; color: #0b0b0d; outline: none; }
+
       /* ---- player controls: two rows, TV style ----
          Same type and colors as Browse. The bar's gradient area lets
          pointer events through (the rows take them back), so it never
@@ -335,6 +352,15 @@
         <video id="video"></video>
         <div id="stats" style="display:none"></div>
         <div id="toast" role="status"></div>
+        <div id="failure" role="alert" hidden>
+          <h2 id="failure-title"></h2>
+          <p id="failure-text"></p>
+          <div class="actions">
+            <a id="failure-camera" href="#" hidden>Choose another camera</a>
+            <a id="failure-signin" href="setup.html" hidden>Sign in</a>
+            <a id="failure-back" href="browse.html">Back to Browse</a>
+          </div>
+        </div>
 
         <div id="timing-tower-overlay">
           <div id="timing-tower-placeholder">Waiting for timing data&hellip;</div>
@@ -437,6 +463,7 @@
       </div>
     </div>
     <script src="js/luna.js"></script>
+    <script src="js/errors.js"></script>
     <script src="js/resume.js"></script>
     <script src="js/feeds.js"></script>
     <script src="js/watch.js"></script>
