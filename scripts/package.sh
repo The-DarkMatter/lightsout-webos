@@ -12,6 +12,13 @@ if [ ! -d service/node_modules/ws ]; then
   (cd service && npm install --no-save ws@8.21.3)
 fi
 
+# service/state/ is where the service keeps the viewer's sign-in on the TV
+# (service/lib/store.js). If a local run ever created it, it must not ship.
+if [ -e service/state ]; then
+  echo "service/state exists and would be packaged with a sign-in in it - remove it first." >&2
+  exit 1
+fi
+
 rm -rf build
 mkdir -p build
 ares-package app service -o build

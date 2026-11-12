@@ -62,6 +62,9 @@ login.
 The sign-in page on the TV's network address needs the pairing code, so
 nobody else on your network can see or change the TV's sign-in.
 
+The sign-in is kept inside the app's own folder on the TV. Updates keep it,
+and uninstalling the app deletes it.
+
 ## Known limits
 
 - **One video at a time.** The TVs this was built on decode a single

@@ -1,22 +1,27 @@
-// Tiny persistent JSON store for the service. webOS services run in a
-// permissions-restricted environment and the docs only promise a service
-// can write its own data under /media/internal - but we haven't yet seen
-// what the *actual* runtime uid/permissions are when Luna itself launches
-// this service (as opposed to our raw dev-mode ssh shell), so this tries a
-// short list of candidate locations and falls back to memory-only (with a
-// loud warning) rather than crashing. Once we see which one actually works
-// on this device, trim the list down and note it in the plan.
+// Tiny persistent JSON store for the service. It holds the viewer's F1 TV
+// sign-in, so it lives where an uninstall removes it: a state/ folder inside
+// the service's own install directory.
+//
+// Measured on an LG C5 (webOS 25 / 10.3.1, Homebrew Channel install):
+// Luna runs the service jailed, as its own uid, with the install directory
+// bind-mounted read-write (it is also the service's $HOME). A file there
+// survives an update through Homebrew Channel's installer to a newer
+// version, so updates don't sign the viewer out, and the directory is gone
+// after an uninstall. /media/internal, used before, outlives the app, which
+// webosbrew's rules forbid for anything it writes.
+//
+// /tmp is the fallback if the install directory isn't writable: the sign-in
+// then lasts until the TV reboots, but nothing outlives the app.
 
 var fs = require("fs");
 var path = require("path");
 
 var CANDIDATE_DIRS = [
   // Set by scripts/dev-server.js so a PC run keeps its own state in the
-  // repo's .dev/ folder, never on the TV's paths.
+  // repo's .dev/ folder, never inside service/.
   process.env.LIGHTSOUT_STATE_DIR || null,
-  "/media/internal/lightsout",
-  process.env.HOME ? path.join(process.env.HOME, "lightsout") : null,
-  "/tmp/lightsout", // last resort: doesn't survive reboot, but better than nothing
+  path.join(__dirname, "..", "state"),
+  "/tmp/lightsout",
 ];
 
 var STATE_FILE = "state.json";

@@ -8,3 +8,6 @@ node_modules/.cache/
 
 # scripts/dev-server.js state (holds an F1 TV sign-in token)
 .dev/
+# Where the service keeps state on the TV; only appears locally if the
+# service is run without LIGHTSOUT_STATE_DIR. Never commit or package it.
+service/state/
