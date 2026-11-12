@@ -13,42 +13,35 @@ Install the current build first. Either run `bash scripts/deploy.sh <device>`, o
 get a build from the workflow's dry run (Actions > Release > Run workflow,
 then download the `dry-run` artifact).
 
-- [ ] **Storage that leaves nothing behind (rule 3).** `service/lib/store.js`
-  saves the sign-in to `/media/internal/lightsout/state.json`. That survives
-  an uninstall, so a token would stay on the TV after the app is gone.
-  1. After signing in, find where it really wrote. The service logs
-     `store persisting to <path>` (in `/var/log/messages` over SSH).
-  2. Find a location that the service can write to and that an uninstall
-     removes. Try a folder inside the service's own install directory: its
-     `__dirname`, under `/media/developer/apps/usr/palm/services/` for a
-     Homebrew install. Check whether it's writable when Luna starts the
-     service, then uninstall and check it's gone.
-  3. Check what an *update* does to that folder too. If an update wipes it,
-     every update signs the viewer out. That may still be the right trade,
-     but say so in the README.
-  4. Make that the only persistent location. Keep `/tmp` as the fallback.
-     Move a `state.json` found in the old location once and delete the old
-     folder. Then rewrite the header comment in `store.js` with what you
-     found.
-- [ ] **Uninstall is clean.** Install, sign in, uninstall. Then over SSH,
-  confirm nothing named `lightsout` is left in `/media/internal`, the
-  service's home folder or `/tmp`.
-- [ ] **Phone sign-in with the pairing code**, end to end from a real phone
-  (Firefox for Android). Also test a browser that never scanned the QR code,
-  so it has to ask for the code.
-- [ ] **TV-browser import** on the rooted TV. It should be offered, stay off
-  until allowed, then pick up a formula1.com login.
-- [ ] **Regression pass:** Browse and switching weekends, a replay with
-  resume, camera switching, audio and captions, the timing tower and track
-  map. Then a **live session with Widevine**. Error cards were added since
-  the last on-TV test, so watch that a working stream never shows one.
-- [ ] **Remote navigation** on the sign-in screen (Up/Down between buttons)
-  and on the player's error card.
-- [ ] **New icon on the home row.** The launcher caches icons for a few
-  minutes after a reinstall.
-- [ ] **Screenshots for the README and the listing.** Take them from the
-  TV, save them under `docs/screenshots/`, and add a Screenshots section
-  to the README.
+Done on the LG C5 on 2026-11-12:
+
+- [x] **Storage that leaves nothing behind (rule 3).** The sign-in now lives
+  in `service/state/` inside the service's install folder: writable from
+  the jail, kept by a Homebrew update to a newer version, removed by an
+  uninstall (see `service/lib/store.js`). No migration from the old
+  `/media/internal/lightsout` location: no released build ever wrote there.
+- [x] **Uninstall is clean**, checked over SSH after a real sign-in.
+- [x] **Phone sign-in with the pairing code** from Firefox for Android,
+  starting from a typed address, so the page had to ask for the code.
+  Requests without the code, or with a wrong one, get a 403.
+- [x] **TV-browser import:** offered, off until allowed, then picked up the
+  formula1.com login.
+- [x] **Regression pass** on replays: Browse and switching weekends, resume,
+  cameras, audio and captions, the timing tower (after fixing the archive's
+  new sign-in requirement).
+- [x] **Remote navigation** on the sign-in screen.
+- [x] **New icon on the home row.**
+
+Still owed, on the next race weekend:
+
+- [ ] **A live session with Widevine.** Error cards were added since the
+  last live test, so watch that a working stream never shows one.
+- [ ] **The live timing tower lining up with the picture**, including
+  across a pause, and the track map live.
+- [ ] **Remote navigation on the player's error card** (`?fail=player` in
+  the dev server's mock mode shows it, if no real failure comes up).
+- [x] **Screenshots for the README and the listing**, in `docs/screenshots/`
+  (2026-11-12).
 - [ ] **Code walkthrough.** The README and the PR say the code was written
   with AI coding agents and reviewed and tested by the author. Read through
   the service (`service/index.js`, `service/lib/`) and the player
@@ -102,8 +95,14 @@ pool: main
 requirements:
   webosRelease: '>=7.0'
 screenshots:
-  - url: https://raw.githubusercontent.com/The-DarkMatter/lightsout-webos/main/docs/screenshots/<file>.png
-    caption: <what it shows>
+  - url: https://raw.githubusercontent.com/The-DarkMatter/lightsout-webos/main/docs/screenshots/browse.jpg
+    caption: Browse a race weekend
+  - url: https://raw.githubusercontent.com/The-DarkMatter/lightsout-webos/main/docs/screenshots/timing-tower.jpg
+    caption: Timing tower over a race replay
+  - url: https://raw.githubusercontent.com/The-DarkMatter/lightsout-webos/main/docs/screenshots/cameras.jpg
+    caption: Every onboard camera
+  - url: https://raw.githubusercontent.com/The-DarkMatter/lightsout-webos/main/docs/screenshots/sign-in.png
+    caption: Sign in from your phone
 shortDescription: Unofficial F1 TV player with live timing tower and track map.
 description: |
   Watch live sessions and replays from your own F1 TV subscription on an LG
@@ -131,7 +130,10 @@ description: |
   web app's runtime APIs are all present from 7.x, and the bundled `ws`
   needs Node 10 or newer. The apps-repo checks compatibility against the
   releases you name, so lower it only once someone has tested an older TV.
-- Screenshots are optional. Drop the block if there are none yet.
+- The screenshots are rendered from the app's own pages at 1920x1080
+  (headless Edge against `scripts/dev-server.js` with real data), since the
+  TV has no screen capture. Replays are unencrypted, so the player pages
+  render with real video.
 
 Open the PR and fill in its template:
 

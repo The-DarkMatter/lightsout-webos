@@ -20,10 +20,21 @@ video.
   switched without losing your place in a replay.
 - **Timing tower**: positions, gaps, sectors, tyres and the last lap,
   from F1's live timing feed during a session. For replays it's rebuilt
-  from F1's session archive to match the moment on screen.
+  from F1's session archive. Either way it's lined up with the moment on
+  screen, and Settings > Timing delay fine-tunes it.
 - **Track map**: car positions drawn from live telemetry.
 - Audio languages, subtitles, quality and playback speed, all from the
   remote. Replays resume where you left off.
+
+## Screenshots
+
+![Browse: the São Paulo Grand Prix weekend, with the race replay in front and the weekend's other sessions below](docs/screenshots/browse.jpg)
+
+![The timing tower over the São Paulo race replay at lap 33](docs/screenshots/timing-tower.jpg)
+
+![The camera menu: main feeds, then each team's onboard cameras](docs/screenshots/cameras.jpg)
+
+![The sign-in screen, with a QR code and pairing code for the phone, and the optional TV-browser import](docs/screenshots/sign-in.png)
 
 ## Requirements
 
