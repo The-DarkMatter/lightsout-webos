@@ -89,16 +89,26 @@ The script's header covers setup. Two traps:
 - **The release workflow's toolbox:** the webosbrew packages are named
   `webosbrew-toolbox-*`, but the commands are `webosbrew-gen-manifest` and
   `webosbrew-ipk-verify`. ipk-verify depends on the fw-symbols package.
+- **State lives in the service's install folder** (`service/state/` on the
+  TV). Measured on the C5 (2026-11-12): writable from the jail, kept by a
+  Homebrew update to a newer version, deleted by an uninstall. webOS leaves
+  `/var/palm/jail/<service id>` behind after an uninstall, but that holds
+  only system files.
+- **F1's timing archive needs the viewer's token** as
+  `Authorization: Bearer` (401 without it since about November 2026). A
+  query-string token, cookie or other header names are refused.
+- **The tower lines up with the picture's own clock**, live and replay,
+  minus the Timing delay setting (default 4 s, which looked right on a
+  replay). See the "lining timing up" section of `app/js/overlays.js`.
 
-## Open issues (from the last on-TV testing)
+## Open issues (from the last on-TV testing, 2026-11-12)
 
+- **The live tower's lining-up is untested** against a real session, and
+  so is live Widevine since the error cards went in. Check both on the next
+  race weekend. Also check the live tower holds up across a pause.
 - **Back presses may accumulate** after opening the timing tower several
   times. This wasn't reproducible from a resting state; retry with the tower
   left open.
-- **The tower runs 3 to 5 seconds ahead of the picture on replays.** That's
-  expected: archive timestamps come from F1's timing system, and the
-  broadcast trails it. The fix is a constant subtracted from the playhead in
-  `app/js/overlays.js`, to be tuned against a real session.
 - **The track map is live-only.** Replays would need the archive's
   `Position.z`, about 9MB per session. `service/lib/archive.js` has the
   plumbing; the download cost is what stopped it.
