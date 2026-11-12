@@ -101,6 +101,20 @@ function initialWeekend() {
     .catch(function () { return { meeting: { pageId: FALLBACK_PAGE_ID }, season: THIS_YEAR }; });
 }
 
+// Back on Browse only minimizes the app (back-nav.js, platformBack), so
+// opening it again from the launcher resumes this page as it was left -
+// on whatever weekend was being looked at. Start over on the latest one,
+// the way a fresh launch does. Only Browse does this: relaunching from the
+// player still returns to the video.
+document.addEventListener("webOSRelaunch", function () {
+  try {
+    window.sessionStorage.removeItem(WEEKEND_KEY);
+  } catch (e) {
+    /* initialWeekend falls back to the latest anyway when nothing is saved */
+  }
+  window.location.replace("browse.html");
+});
+
 // The weekend before (dir -1) or after (dir 1) the one on screen, crossing
 // into the neighbouring season at either end. Null at the ends of the range.
 function neighbourWeekend(dir) {
