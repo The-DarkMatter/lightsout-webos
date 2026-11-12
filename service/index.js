@@ -295,25 +295,27 @@ service.register("f1tvPage", function (message) {
 // Timing for a session that already happened (lib/archive.js). The app
 // sends the absolute instant showing on screen - which it knows because F1
 // TV's manifests carry EXT-X-PROGRAM-DATE-TIME - and gets the tower as it
-// stood then. No token: F1's session archive needs no sign-in.
+// stood then. F1's archive now wants the viewer's sign-in (see archive.js).
 service.register("historicTiming", function (message) {
   var atUtc = message.payload && message.payload.atUtc;
   var at = atUtc ? Date.parse(atUtc) : NaN;
   if (!at) return message.respond({ returnValue: false, errorText: "missing or unreadable 'atUtc'" });
-  archive
-    .towerAt(at)
-    .then(function (result) {
-      if (!result) {
-        // No archived session covers this instant: a pre-season test, a
-        // support race F1 doesn't publish timing for, or a season older
-        // than the archive. Not an error, just nothing to show.
-        return message.respond({ returnValue: true, available: false, atUtc: new Date(at).toISOString() });
-      }
-      message.respond(Object.assign({ returnValue: true, available: true }, result));
-    })
-    .catch(function (err) {
-      message.respond({ returnValue: false, errorText: String((err && err.message) || err) });
-    });
+  withToken(message, function (token) {
+    archive
+      .towerAt(at, token)
+      .then(function (result) {
+        if (!result) {
+          // No archived session covers this instant: a pre-season test, a
+          // support race F1 doesn't publish timing for, or a season older
+          // than the archive. Not an error, just nothing to show.
+          return message.respond({ returnValue: true, available: false, atUtc: new Date(at).toISOString() });
+        }
+        message.respond(Object.assign({ returnValue: true, available: true }, result));
+      })
+      .catch(function (err) {
+        message.respond({ returnValue: false, errorText: String((err && err.message) || err) });
+      });
+  });
 });
 
 // Live timing (M4). Started/stopped on demand from the app when the

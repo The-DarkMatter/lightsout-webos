@@ -7,7 +7,10 @@
 // timing look like at this exact moment?
 //
 // F1 archives every session's raw feed on the same host the live connection
-// uses, unauthenticated, one file per topic:
+// uses, one file per topic. It used to be open to anyone; by November 2026
+// every request without a sign-in got a 401, and the viewer's F1 TV token as
+// a Bearer header lets it through (a query-string token, cookie or other
+// header names are still refused). So every request carries that token:
 //
 //   /static/2026/Index.json                         seasons -> meetings -> sessions
 //   /static/<session path>/TimingData.jsonStream    the recorded stream
@@ -72,11 +75,19 @@ var FEED_TAIL_MS = 2 * 3600 * 1000;
 var yearIndexes = {}; // year -> parsed Index.json
 var sessions = {}; // session path -> loaded session
 var loading = {}; // session path -> in-flight promise
+// The viewer's F1 TV token, refreshed by every towerAt() call. One viewer
+// per TV, so a module-level token is enough; downloads already in flight
+// pick up the newer one on their next request.
+var authToken = null;
 
 function get(path) {
+  var headers = { "User-Agent": USER_AGENT };
+  if (authToken) headers["Authorization"] = "Bearer " + authToken;
   return new Promise(function (resolve, reject) {
     var req = https.get(
-      { host: HOST, path: path, headers: { "User-Agent": USER_AGENT }, timeout: REQUEST_TIMEOUT_MS },
+      // encodeURI: session folders follow the meeting's name, and some aren't
+      // ASCII ("2026-11-08_São_Paulo_Grand_Prix"). Sent raw, F1 answers 400.
+      { host: HOST, path: encodeURI(path), headers: headers, timeout: REQUEST_TIMEOUT_MS },
       function (res) {
         var chunks = [];
         res.on("data", function (c) { chunks.push(c); });
@@ -116,6 +127,8 @@ function getWithRetry(path, tries, waitMs) {
     // for a race and not for qualifying - so this is a normal answer, and
     // retrying it would just add delay before the same result.
     if (res.statusCode === 404 || res.statusCode === 403) return null;
+    // A refused sign-in won't change on a retry.
+    if (res.statusCode === 401) throw new Error("F1's timing archive refused the sign-in (401)");
     return again(new Error("archive returned " + res.statusCode + " for " + path));
   }, again);
 }
@@ -321,8 +334,9 @@ function applyUpTo(session, tStream) {
 }
 
 // The timing tower as it stood at a UTC instant, or null when no archived
-// session covers it.
-function towerAt(atUtcMs) {
+// session covers it. `token` is the viewer's F1 TV token (see authToken).
+function towerAt(atUtcMs, token) {
+  authToken = token || null;
   return findSession(atUtcMs).then(function (found) {
     if (!found) return null;
     return loadSession(found.path).then(function (session) {

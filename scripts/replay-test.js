@@ -2,9 +2,11 @@
 // Offline validation of livetiming.js's per-topic reducers against F1's
 // public static session archive - the same per-topic JSON files (a full
 // "keyframe" snapshot plus a timestamp-prefixed incremental ".jsonStream")
-// that exist for every past session, world championship or support race,
-// no auth needed: https://livetiming.formula1.com/static/<year>/<event
-// folder>/<session folder>/Index.json lists every available topic file.
+// that exist for every past session, world championship or support race:
+// https://livetiming.formula1.com/static/<year>/<event folder>/<session
+// folder>/Index.json lists every available topic file. The archive now
+// needs an F1 TV sign-in: this reads the token the dev server stored in
+// .dev/state.json, or F1TV_TOKEN from the environment.
 //
 // This runs real recorded data through the exact same applyTopic() used
 // for the live SignalR connection, so the topic data shapes (previously
@@ -33,10 +35,26 @@ if (!sessionPath) {
 
 var BASE = "https://livetiming.formula1.com/static/" + sessionPath;
 
+var token = process.env.F1TV_TOKEN || null;
+if (!token) {
+  try {
+    var devState = require("path").join(__dirname, "..", ".dev", "state.json");
+    token = JSON.parse(require("fs").readFileSync(devState, "utf8")).f1tv_token || null;
+  } catch (e) {}
+}
+if (!token) {
+  console.error("F1's archive needs a sign-in: sign in once through scripts/dev-server.js, or set F1TV_TOKEN.");
+  process.exit(1);
+}
+
 function get(path) {
   return new Promise(function (resolve) {
     https
-      .get(BASE + "/" + path, function (res) {
+      .get(encodeURI(BASE + "/" + path), { headers: { Authorization: "Bearer " + token } }, function (res) {
+        if (res.statusCode === 401) {
+          console.error("F1's archive refused the sign-in (401) for " + path + ". Sign in again.");
+          process.exit(1);
+        }
         if (res.statusCode !== 200) {
           resolve(null); // topic doesn't exist for this session type (e.g. LapCount on a practice session) - not an error
           res.resume();

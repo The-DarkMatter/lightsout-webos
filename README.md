@@ -94,8 +94,8 @@ with your TV model, its webOS version, the app version, and what happened.
   with the TV's own Widevine support for live streams. Nothing about the
   protection is bypassed: the licence request carries your own sign-in.
 - **Timing** comes from F1's live timing feed while a session runs
-  (`service/lib/livetiming.js`), and for replays from F1's public session
-  archive, lined up with the video by the timestamps in F1 TV's streams
+  (`service/lib/livetiming.js`), and for replays from F1's session archive
+  (which uses your sign-in), lined up with the video by the timestamps in F1 TV's streams
   (`service/lib/archive.js`).
 
 ## Development
