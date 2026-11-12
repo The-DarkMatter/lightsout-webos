@@ -564,6 +564,9 @@ var CHOICES = {
   speed: { title: "Playback speed", btn: speedBtn, row: "row-speed", options: speedChoices },
   // Commentary language. Settings only - no bar button.
   language: { title: "Language", btn: null, row: "row-language", options: audioChoices },
+  // How far timing is held back behind the picture's clock. Settings only;
+  // the choices live in overlays.js, loaded after this file.
+  timing: { title: "Timing delay", btn: null, row: "row-timing", options: function () { return timingDelayChoices(); } },
 };
 
 // Positions the list above the button it belongs to. Measured in the page's
@@ -882,6 +885,7 @@ function showSettingsValues() {
   var audio = audioTracks().filter(function (t) { return t.active; })[0];
   document.getElementById("val-language").textContent = audio ? audioLabel(audio) : "Default";
   document.getElementById("val-speed").textContent = speedName(video.playbackRate);
+  document.getElementById("val-timing").textContent = timingDelayLabel();
 }
 
 showCaptions();

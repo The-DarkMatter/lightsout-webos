@@ -68,6 +68,9 @@ function ensurePolling() {
 function stopPollingIfIdle() {
   if (anyOverlayVisible()) return;
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  // The service drops its connection too, so these would have a gap in them.
+  towerHistory = [];
+  mapHistory = [];
   callService("liveTimingStop").catch(function () { /* best effort */ });
 }
 
@@ -174,10 +177,103 @@ function telemetryReadout(telemetry) {
   );
 }
 
-function renderTower(drivers) {
+// --- lining timing up with the picture ---------------------------------------
+// Timing runs ahead of the video: live by the whole broadcast and streaming
+// delay (MultiViewer holds its tower back a fixed ~35s for this), and on a
+// replay by the few seconds the broadcast trails F1's timing system. Rather
+// than guess the bigger number, both cases read the picture's own clock -
+// F1 TV's manifests carry EXT-X-PROGRAM-DATE-TIME, live as well as replay
+// (watch.js playheadUtc) - and show timing as it stood at that instant. The
+// viewer's delay setting covers what's left: the gap between the stamped
+// time and F1's timing clock. 3 to 5 seconds, measured on replays.
+
+var DELAY_KEY = "lightsout.timing.delayMs";
+var DEFAULT_DELAY_MS = 4000;
+var DELAY_CHOICES_MS = [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 10000];
+// A live stream without timestamps has no clock to read, so assume F1 TV's
+// usual live latency instead; with the default delay on top, this comes to
+// about MultiViewer's 35 seconds.
+var NO_CLOCK_LATENCY_MS = 30000;
+// Live snapshots kept for lining up: back to where watch.js stops treating
+// the picture as live and asks the archive instead (LIVE_EDGE_MS).
+var LIVE_HISTORY_MS = 5 * 60 * 1000;
+
+var delayMs = (function () {
+  try {
+    var saved = parseInt(window.localStorage.getItem(DELAY_KEY), 10);
+    if (saved >= 0 && saved <= 60000) return saved;
+  } catch (e) { /* default */ }
+  return DEFAULT_DELAY_MS;
+})();
+
+function setTimingDelayMs(ms) {
+  delayMs = ms;
+  try {
+    window.localStorage.setItem(DELAY_KEY, String(ms));
+  } catch (e) { /* applies until the page closes */ }
+}
+
+function currentDelayMs() {
+  return delayMs;
+}
+
+function delayLabel(ms) {
+  return ms === 0 ? "None" : ms / 1000 + " s";
+}
+
+// For watch.js's Settings menu (CHOICES.timing).
+function timingDelayChoices() {
+  var now = currentDelayMs();
+  return DELAY_CHOICES_MS.map(function (ms) {
+    return {
+      label: delayLabel(ms),
+      hint: ms === DEFAULT_DELAY_MS ? "Default" : "",
+      selected: ms === now,
+      pick: function () { setTimingDelayMs(ms); },
+    };
+  });
+}
+
+function timingDelayLabel() {
+  return delayLabel(currentDelayMs());
+}
+
+// The timing instant that matches the picture.
+function timingInstant() {
+  var at = playheadUtc();
+  if (at === null) at = Date.now() - NO_CLOCK_LATENCY_MS;
+  return at - currentDelayMs();
+}
+
+// Live snapshots, oldest first: {t: when received, data}.
+var towerHistory = [];
+var mapHistory = [];
+
+function remember(history, data) {
+  var now = Date.now();
+  history.push({ t: now, data: data });
+  while (history.length && history[0].t < now - LIVE_HISTORY_MS) history.shift();
+}
+
+// The newest snapshot from no later than t, or null if none goes back that far.
+function asOf(history, t) {
+  for (var i = history.length - 1; i >= 0; i--) {
+    if (history[i].t <= t) return history[i].data;
+  }
+  return null;
+}
+
+// Placeholder while the snapshots don't yet reach back to the picture.
+function liningUpText(history, t) {
+  if (!history.length) return statusText;
+  var wait = Math.ceil((history[0].t - t) / 1000);
+  return "Lining up with the picture… " + Math.max(1, wait) + " s";
+}
+
+function renderTower(drivers, text) {
   if (!drivers || !drivers.length) {
     towerPlaceholder.style.display = "block";
-    towerPlaceholder.textContent = statusText;
+    towerPlaceholder.textContent = text || statusText;
     towerRows.innerHTML = "";
     fitTowerAboveControls();
     return;
@@ -205,13 +301,13 @@ function renderTower(drivers) {
   fitTowerAboveControls(); // watch.js: keeps the tower clear of the control bar
 }
 
-function renderMap(data) {
+function renderMap(data, text) {
   var trail = (data && data.trail) || [];
   var drivers = (data && data.drivers) || [];
 
   if (!trail.length) {
     mapPlaceholder.style.display = "flex";
-    mapPlaceholder.textContent = statusText;
+    mapPlaceholder.textContent = text || statusText;
     mapSvg.innerHTML = "";
     return;
   }
@@ -286,12 +382,12 @@ function renderMap(data) {
 var historicInFlight = false;
 
 function pollHistoric() {
-  var at = playheadUtc();
-  if (at === null) {
+  if (playheadUtc() === null) {
     statusText = "This replay doesn't carry timestamps, so timing can't be lined up with it.";
     setPlaceholders(statusText);
     return;
   }
+  var at = timingInstant();
   // The first call downloads the session; at one poll a second the rest
   // would pile up behind it.
   if (historicInFlight) return;
@@ -368,11 +464,39 @@ function poll() {
       consecutiveFailures++;
       if (consecutiveFailures >= 3) statusText = "Connection error — the on-TV service is not answering";
     });
+  // Each poll is remembered, and what's drawn is the one matching the
+  // picture (see timingInstant).
   callService("liveTimingTower")
-    .then(function (res) { if (res.returnValue) renderTower(res.drivers); })
+    .then(function (res) {
+      if (!res.returnValue) return;
+      remember(towerHistory, res.drivers);
+      var t = timingInstant();
+      var drivers = asOf(towerHistory, t);
+      if (drivers === null) renderTower([], liningUpText(towerHistory, t));
+      else renderTower(drivers);
+    })
     .catch(function () { /* summary poll above already tracks failures */ });
   callService("liveTimingTrackMap")
-    .then(function (res) { if (res.returnValue) renderMap(res); })
+    .then(function (res) {
+      if (!res.returnValue) return;
+      // Only the car positions are kept per poll: the full trails are
+      // thousands of points per car, and they're the circuit's outline, which
+      // doesn't need holding back. So the outline is the newest one and the
+      // cars sit where they were at the picture's instant.
+      var cars = {};
+      (res.drivers || []).forEach(function (d) { cars[d.racingNumber] = { x: d.x, y: d.y }; });
+      remember(mapHistory, cars);
+      var t = timingInstant();
+      var then = asOf(mapHistory, t);
+      if (then === null) return renderMap(null, liningUpText(mapHistory, t));
+      renderMap({
+        trail: res.trail,
+        drivers: (res.drivers || []).map(function (d) {
+          var at = then[d.racingNumber] || { x: null, y: null };
+          return { tla: d.tla, teamColour: d.teamColour, trail: d.trail, x: at.x, y: at.y };
+        }),
+      });
+    })
     .catch(function () { /* summary poll above already tracks failures */ });
 }
 
