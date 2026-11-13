@@ -11,3 +11,6 @@ node_modules/.cache/
 # Where the service keeps state on the TV; only appears locally if the
 # service is run without LIGHTSOUT_STATE_DIR. Never commit or package it.
 service/state/
+
+# legacy/make.sh downloads ws@1.1.5 here for the webOS 4 build.
+legacy/deps/

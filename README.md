@@ -134,6 +134,36 @@ bash scripts/deploy.sh [device]        # builds, installs and launches over SSH
 Releases are built by GitHub Actions from a `v<version>` tag
 (`.github/workflows/release.yml`).
 
+### Older TVs (webOS 4)
+
+The normal package needs webOS 7 or later. On webOS 4 the service runs on
+Node 0.12 and the app on Chrome 53, and the stock build breaks on both.
+`legacy/make.sh` builds a separate package for those TVs from the same
+`app/` and `service/`:
+
+```sh
+legacy/make.sh                         # builds build/legacy/out/<id>_<version>_all.ipk
+```
+
+It changes the copies, not the sources:
+
+- The service gets `legacy/service-compat.js` (`Object.assign`,
+  `Buffer.from`, `fs.mkdirSync` with `recursive`, request timeouts), ws
+  1.1.5 in place of ws 8, and the TV's own `webos-service` in place of the
+  pinned one.
+- The app gets `legacy/app-compat.js` (`scrollIntoView` options), and
+  `legacy/build.js` turns flex `gap`, `inset` and `aspect-ratio` into CSS
+  that Chrome 53 understands.
+
+`legacy/lightsout-renew.sh` is an optional Homebrew boot hook for rooted
+TVs. It wakes the service every six hours so the 4-day pass gets renewed
+even when nobody opens the app, and shows a toast once a day during the
+last two weeks of the sign-in.
+
+Tested on an LG webOS 4.10 TV (Node v0.12.2): the service, sign-in,
+renewal, season browsing and live timing. Playback on webOS 4 is not
+tested yet.
+
 ## AI assistance
 
 This app was written with the help of AI coding agents. The author has
