@@ -13,6 +13,7 @@ text for each one sits next to it in this repository.
 | [flag-icons](https://github.com/lipis/flag-icons) (Panayiotis Lipiridis) | | `app/flags/` | MIT | `app/flags/LICENSE` |
 | [webos-service](https://github.com/webosose/nodejs-module-webos-service) (LG Electronics) | commit `1dd2c9d` | `service/node_modules/webos-service/` | Apache-2.0 | `service/node_modules/webos-service/LICENSE` |
 | [ws](https://github.com/websockets/ws) | 8.21.3 | `service/node_modules/ws/` | MIT | `service/node_modules/ws/LICENSE` |
+| [ws](https://github.com/websockets/ws), with [options](https://github.com/einaros/options.js) and [ultron](https://github.com/unshiftio/ultron) (webOS 4 package only) | 1.1.5 | fetched by `legacy/make.sh` | MIT | `LICENSE` (ultron) or the README (ws, options) in each module's folder |
 
 `service/node_modules/` is committed on purpose: a webOS service must be
 self-contained inside the package, so these modules ship in the IPK.
