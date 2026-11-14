@@ -1,4 +1,4 @@
-# Lights Out for F1 TV
+# Lights Out — Unofficial F1 TV App for LG webOS TVs
 
 An F1 TV player for LG webOS TVs, installed through the
 [webOS Homebrew Channel](https://www.webosbrew.org/). Watch live sessions and
