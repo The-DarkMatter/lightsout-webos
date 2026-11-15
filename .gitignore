@@ -1,5 +1,7 @@
 build/
 *.log
+.pi/
+AGENTS.md
 
 # service/node_modules IS bundled into the ipk (webOS services must be
 # self-contained), so it's not gitignored blanket-style like a normal

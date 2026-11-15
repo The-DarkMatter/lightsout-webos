@@ -1,0 +1,29 @@
+name: Playback checks
+
+on:
+  pull_request:
+  push:
+    branches: [main, feat/experimental-4k-uhd]
+
+permissions:
+  contents: read
+
+jobs:
+  playback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          package-manager-cache: false
+      - name: Offline playback checks
+        run: node scripts/playback-test.js
+      - name: Install webOS packaging CLI
+        run: npm install --global @webos-tools/cli@3.2.6
+      - name: Build IPK
+        run: bash scripts/package.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: experimental-playback-ipk
+          path: build/*.ipk

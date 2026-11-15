@@ -109,6 +109,14 @@ var DEVICE_INFO =
   "device=web;screen=browser;os=macos;browser=chrome;browserVersion=142;" +
   "model=Macintosh;osVersion=26.0.1;appVersion=release-R48.0.5;playerVersion=8.212.0;p=true;tms=1";
 
+// Only the device literal is documented by the Android reference. Keep the
+// known WEB_HLS/player_tm route: no captured Android platform/player pair is
+// available. This is a negotiation experiment, not a proven Android profile.
+var PLAYBACK_PROFILES = {
+  web: { platform: DEFAULT_PLATFORM, deviceInfo: DEVICE_INFO },
+  uhd: { platform: DEFAULT_PLATFORM, deviceInfo: "device=android_tv" },
+};
+
 function request(host, pathAndQuery, headers) {
   return new Promise(function (resolve, reject) {
     var req = https.request(
@@ -219,7 +227,11 @@ function getContentVideo(contentId, subscriptionTier, groupId, subscriptionToken
 // should work for POV switching without another PLAY call per switch.
 function getPlay(contentId, subscriptionToken, entitlementToken, opts) {
   opts = opts || {};
-  var platform = opts.platform || DEFAULT_PLATFORM;
+  var profile = PLAYBACK_PROFILES[opts.profile || "web"];
+  if (!Object.prototype.hasOwnProperty.call(PLAYBACK_PROFILES, opts.profile || "web")) {
+    throw new Error("unknown playback profile");
+  }
+  var platform = opts.platform || profile.platform;
   var path =
     "/" + PLAY_API_VERSION + "/" + LOGIN_STATUS + "/" + LANGUAGE + "/" + platform +
     "/ALL/CONTENT/PLAY?contentId=" + encodeURIComponent(contentId);
@@ -228,6 +240,7 @@ function getPlay(contentId, subscriptionToken, entitlementToken, opts) {
   return f1tvRequest(path, {
     ascendontoken: subscriptionToken,
     entitlementtoken: entitlementToken,
+    "X-F1-Device-Info": profile.deviceInfo,
   });
 }
 

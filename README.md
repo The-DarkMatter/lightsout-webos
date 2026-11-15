@@ -76,6 +76,43 @@ nobody else on your network can see or change the TV's sign-in.
 The sign-in is kept inside the app's own folder on the TV. Updates keep it,
 and uninstalling the app deletes it.
 
+## Experimental native 4K
+
+**Unverified on LG G6/webOS 26.** Requires F1 TV **Premium**, eligible UHD
+content and a compatible TV/DRM policy. This is an opt-in negotiation experiment,
+not confirmed UHD playback or an Android/ClearVR port.
+
+In the player's **Settings > 4K UHD (Experimental)** choose **On** (default:
+**Off**). The preference persists on that TV. Changing it reloads the stream,
+keeping replay position, camera, speed and audio/caption languages where possible.
+**Off** restores the existing web HD request.
+
+The experiment requests the Android TV device identity documented by the
+[F1TV 4K Patch](https://github.com/Alexvbp/f1tv-4k-patch), while retaining the
+known playback route. Shaka prefers supported HEVC and uses its existing webOS
+HDR detection, without forcing HDR capability. Resolution lists only playable
+manifest tracks: **2160p** appears only if actually offered. Auto bitrate remains
+available; an advertised UHD track is not proof that it is being decoded.
+
+If negotiation, manifest, codec or DRM playback fails, or no playable
+3840×2160 rendition is found, the app unloads it and retries the original HD
+profile **once**, with a brief HD-fallback message. Explicit sign-in,
+subscription and geographical denials are shown instead of retried. Some
+streams may still be unavailable after fallback. UHD remains enabled for the
+next load; choose Off to stop trying it.
+
+**Settings > Statistics** shows requested/current profile, returned stream type,
+maximum playable manifest size, decoded video size, active codec, manifest frame
+rate/HDR tag, frame counters and HD fallback. HDR tags do **not** confirm the
+TV's output signal. The 1920×1080 interface is unchanged and does not cap video
+resolution.
+
+**Remaining blocker:** the Android patch uses ClearVR tiled video. No captured
+UHD response establishes that this request yields ordinary HLS/DASH playable by
+Shaka rather than requiring ClearVR. Native 4K, 50 fps, HLG, live UHD licences
+and UHD replays all need a Premium playback test on the TV. Existing HD is the
+fallback, not a claim of UHD success. See [research and TV checklist](docs/UHD.md).
+
 ## Known limits
 
 - **One video at a time.** The TVs this was built on decode a single
@@ -116,6 +153,12 @@ You need Node.js. On a PC:
 ```sh
 node scripts/dev-server.js --mock   # canned data, no sign-in, no network
 node scripts/dev-server.js          # the real service against F1 TV
+```
+
+Offline playback regression checks (no sign-in or network):
+
+```sh
+node scripts/playback-test.js
 ```
 
 Then open <http://localhost:8788/browse.html>. Real mode prints a sign-in
