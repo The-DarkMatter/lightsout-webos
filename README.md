@@ -134,6 +134,32 @@ bash scripts/deploy.sh [device]        # builds, installs and launches over SSH
 Releases are built by GitHub Actions from a `v<version>` tag
 (`.github/workflows/release.yml`).
 
+### Older TVs (webOS 4)
+
+The normal package needs webOS 7 or later. On webOS 4 the service runs on
+Node 0.12 and the app on Chrome 53, and the stock build breaks on both.
+`legacy/make.sh` builds a separate package for those TVs from the same
+`app/` and `service/`:
+
+```sh
+legacy/make.sh                         # builds build/legacy/out/<id>_<version>_all.ipk
+```
+
+It changes the copies, not the sources:
+
+- The service gets `legacy/service-compat.js` (`Object.assign`,
+  `Buffer.from`, `fs.mkdirSync` with `recursive`, request timeouts), ws
+  1.1.5 in place of ws 8, and the TV's own `webos-service` in place of the
+  pinned one. ws 1.1.5 and its two dependencies are committed in
+  `legacy/node_modules/`, so every build gets the same copy.
+- The app gets `legacy/app-compat.js` (`scrollIntoView` options and
+  `element.scrollTo`), and `legacy/build.js` turns flex `gap`, `inset` and
+  `aspect-ratio` into CSS that Chrome 53 understands.
+
+Tested on an LG webOS 4.10 TV (Node v0.12.2): the service, sign-in,
+renewal, season browsing and live timing. Playback on webOS 4 is not
+tested yet.
+
 ## AI assistance
 
 This app was written with the help of AI coding agents. The author has
