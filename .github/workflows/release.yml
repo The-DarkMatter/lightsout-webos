@@ -25,11 +25,12 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 26
+          package-manager-cache: false
 
       - name: Install ares-cli
         run: npm install --global @webos-tools/cli@3.2.6
@@ -53,6 +54,9 @@ jobs:
             echo "Tag $GITHUB_REF_NAME, appinfo.json $app, service/package.json $service - they must agree." >&2
             exit 1
           fi
+
+      - name: Playback regression checks
+        run: node scripts/playback-test.js
 
       - name: Package
         run: bash scripts/package.sh
@@ -82,7 +86,7 @@ jobs:
 
       - name: Keep the dry run's output
         if: github.event_name != 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dry-run
           path: build/

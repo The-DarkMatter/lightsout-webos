@@ -185,7 +185,7 @@ service.register("f1tvPlayTest", function (message) {
       // PLAY and the content's details in parallel. Details only name the
       // feeds, so a failure there must never stop playback.
       return Promise.all([
-        f1tv.getPlay(contentId, token, entitlementToken, { platform: payload.platform, channelId: payload.channelId }),
+        f1tv.getPlay(contentId, token, entitlementToken, { profile: payload.profile, platform: payload.platform, channelId: payload.channelId }),
         f1tv.getContentVideo(contentId, "PREMIUM", 2, token, entitlementToken).catch(function () { return null; }),
       ])
         .then(function (responses) {

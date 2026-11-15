@@ -68,14 +68,83 @@ var loadTicket = 0;
 // entitlementtoken together; entitlementtoken alone was untested and
 // risked another failed round-trip during a rare live-testing window.
 var currentDrmHeaders = null;
+var requestedProfile = "web";
+var playbackProfile = "web";
+var returnedStreamType = "unknown";
+var hdFallback = false;
+var contentTicket = 0;
+var playbackOptions = {};
+var standardVideoPreferences = null;
+
+function uhdEnabled() {
+  try { return window.localStorage.getItem("lightsout.uhd") === "1"; }
+  catch (e) { return false; }
+}
+
+function playbackCarry() {
+  var carry = { rate: video.playbackRate, channelId: currentChannelId };
+  var caption = activeCaption();
+  if (caption) carry.captionLanguage = caption.language;
+  var audio = audioTracks().filter(function (t) { return t.active; })[0];
+  if (audio) carry.audioLanguage = audio.language;
+  try {
+    if (player && !feedLoading && !player.isLive() && hasDuration()) carry.startTime = video.currentTime;
+  } catch (e) { /* no loaded timeline */ }
+  return carry;
+}
+
+// Shaka's HTTP errors can be nested inside DRM errors. Never mask an
+// explicit authentication, entitlement or geographical denial with retry.
+function accessDenied(err) {
+  if (!err || typeof err !== "object") return false;
+  if (err.needsSignIn || ["signin", "subscription", "region"].indexOf(err.reason) !== -1) return true;
+  if ([401, 403, 451].indexOf(err.f1Status) !== -1) return true;
+  function denied(value, depth) {
+    if ([401, 403, 451].indexOf(value) !== -1) return true;
+    if (!value || typeof value !== "object" || depth > 5) return false;
+    return Object.keys(value).some(function (key) { return denied(value[key], depth + 1); });
+  }
+  return denied(err.data, 0);
+}
+
+function fallbackToHD(err) {
+  if (playbackProfile !== "uhd" || hdFallback || accessDenied(err)) return false;
+  hdFallback = true;
+  playbackProfile = "web"; // latch before unloading: error events cannot retry twice
+  var carry = Object.assign({}, playbackOptions, playbackCarry());
+  carry.toast = "4K unavailable — using standard HD playback";
+  loadContent(currentContentId, null, carry, true);
+  return true;
+}
+
+function uhdChoices() {
+  return [false, true].map(function (on) {
+    return {
+      label: on ? "On" : "Off",
+      selected: uhdEnabled() === on,
+      pick: function () {
+        try { window.localStorage.setItem("lightsout.uhd", on ? "1" : "0"); }
+        catch (e) { showToast("Could not save the 4K preference"); return; }
+        if (currentContentId) loadContent(currentContentId, null, playbackCarry());
+      },
+    };
+  });
+}
 
 function ensurePlayer() {
   if (player) return player;
   shaka.polyfill.installAll();
   player = new shaka.Player();
   player.attach(video);
+  standardVideoPreferences = player.getConfiguration().preferredVideo;
   player.addEventListener("error", function (event) {
-    setStatus("shaka error: " + JSON.stringify(event.detail), "fail");
+    // Load failures are handled by their ticketed promise; events from an
+    // unloading/previous stream must not overwrite a new content request.
+    if (feedLoading) return;
+    var err = event.detail;
+    if (err && err.severity === 2 && fallbackToHD(err)) return;
+    setStatus("Player error " + (err && err.code || "unknown"), "fail");
+    if (err && err.severity === 2) showFailure(explainPlayerError(err), { camera: currentFeeds.length > 1 });
   });
   // Caption tracks and the playing rendition can change after load - F1's
   // caption tracks can appear once the stream is running.
@@ -175,6 +244,14 @@ function playUrl(url, drm, opts) {
   feedLoading = true;
   setStatus("loading manifest…", "pending");
   var p = ensurePlayer();
+  // Preferences apply only after Shaka's codec/DRM capability filtering.
+  // AUTO uses its webOS HDR detection (preferring HLG when available), not
+  // Android's forced HDR advertise. Restore the original preferences in HD.
+  p.configure({ preferredVideo: playbackProfile === "uhd" ? [
+    { codec: "hvc1", hdrLevel: "AUTO" },
+    { codec: "hev1", hdrLevel: "AUTO" },
+    { hdrLevel: "AUTO" },
+  ] : standardVideoPreferences });
   currentDrmHeaders = drm ? { entitlementToken: drm.entitlementToken, ascendontoken: drm.ascendontoken } : null;
   p.configure({ drm: { servers: drm ? { "com.widevine.alpha": drm.laURL } : {} } });
   p
@@ -189,6 +266,10 @@ function playUrl(url, drm, opts) {
         var same = textTracks().filter(function (t) { return t.language === opts.captionLanguage; })[0];
         if (same) player.selectTextTrack(same);
       }
+      if (opts.audioLanguage) player.selectAudioLanguage(opts.audioLanguage);
+      if (playbackProfile === "uhd" && !variantTracks().some(function (t) { return t.width >= 3840 && t.height >= 2160; })) {
+        if (fallbackToHD({})) return;
+      }
       if (opts.toast) showToast(opts.toast);
       // video.play() first and deliberately not returned/awaited: an
       // exception in a later cosmetic setup call (populateCaptions hit
@@ -197,7 +278,8 @@ function playUrl(url, drm, opts) {
       // wrapped too, as defense in depth.
       video.play().catch(function (err) {
         if (ticket === loadTicket && err && err.name !== "AbortError") {
-          setStatus("video.play() failed: " + err.name + " " + err.message, "fail");
+          if (err.name === "NotSupportedError" && fallbackToHD(err)) return;
+          setStatus("video.play() failed: " + err.name, "fail");
         }
       });
       // Captions are off on load (no text track selected) - see activeCaption().
@@ -207,19 +289,9 @@ function playUrl(url, drm, opts) {
     .catch(function (err) {
       if (ticket !== loadTicket) return; // stale failure from an abandoned switch
       if (err && err.name === "AbortError") return; // benign - a newer switch interrupted this one
-      // Previous guess (bare DOMException) didn't match reality - this
-      // dumps everything available instead of guessing again: type,
-      // constructor, every own property name (own + non-enumerable), and
-      // a plain String() fallback, so the real shape is visible without
-      // needing devtools attached.
-      var diag =
-        "typeof=" + typeof err +
-        " ctor=" + (err && err.constructor && err.constructor.name) +
-        " toString=" + Object.prototype.toString.call(err) +
-        " keys=" + (err ? JSON.stringify(Object.getOwnPropertyNames(err)) : "n/a") +
-        " String()=" + String(err) +
-        " JSON=" + JSON.stringify(err);
-      setStatus("load/play failed: " + diag, "fail");
+      if (fallbackToHD(err)) return;
+      // Error data may contain signed manifests or licence credentials.
+      setStatus("load/play failed: player error " + (err && err.code || "unknown"), "fail");
       feedLoading = false;
       showFailure(explainPlayerError(err), { camera: currentFeeds.length > 1 });
     });
@@ -561,6 +633,7 @@ var ICON_CAPTIONS_OFF =
 var CHOICES = {
   captions: { title: "Captions", btn: captionsBtn, row: "row-captions", options: captionChoices, empty: "No captions for this stream" },
   quality: { title: "Resolution", btn: qualityBtn, row: "row-resolution", options: qualityChoices },
+  uhd: { title: "4K UHD (Experimental)", btn: null, row: "row-uhd", options: uhdChoices },
   speed: { title: "Playback speed", btn: speedBtn, row: "row-speed", options: speedChoices },
   // Commentary language. Settings only - no bar button.
   language: { title: "Language", btn: null, row: "row-language", options: audioChoices },
@@ -884,6 +957,7 @@ function showSettingsValues() {
 
   var audio = audioTracks().filter(function (t) { return t.active; })[0];
   document.getElementById("val-language").textContent = audio ? audioLabel(audio) : "Default";
+  document.getElementById("val-uhd").textContent = uhdEnabled() ? "On" : "Off";
   document.getElementById("val-speed").textContent = speedName(video.playbackRate);
   document.getElementById("val-timing").textContent = timingDelayLabel();
 }
@@ -953,33 +1027,69 @@ function startStatsLoop() {
     try {
       track = player.getVariantTracks().filter(function (t) { return t.active; })[0];
     } catch (e) { /* ignore */ }
+    var max = variantTracks().reduce(function (best, t) { return t.height > best.height ? t : best; }, { width: 0, height: 0 });
+    var frames = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
     statsEl.textContent =
-      "buffered=" + (video.buffered.length ? video.buffered.end(0).toFixed(1) : "0") +
-      "  dropped=" + (stats.droppedFrames || 0) +
-      (track ? "\n" + track.width + "x" + track.height + " " + (track.videoCodec || "") : "");
+      "Requested=" + requestedProfile + "  current=" + playbackProfile + "  HD fallback=" + (hdFallback ? "yes" : "no") +
+      "\nStream=" + returnedStreamType +
+      "\nPlayable manifest max=" + max.width + "x" + max.height +
+      "\nDecoded video=" + video.videoWidth + "x" + video.videoHeight +
+      (track ? "\nActive manifest=" + track.width + "x" + track.height + " " + (track.videoCodec || "unknown") +
+        "  fps=" + (track.frameRate || "unknown") + "  HDR tag=" + (track.hdr || "unknown") : "") +
+      "\nHDR output signal=not observable" +
+      "\nFrames(total)=" + (frames ? frames.totalVideoFrames : "unknown") +
+      "  decoded(reported)=" + (stats.decodedFrames != null ? stats.decodedFrames : "unknown") +
+      "  dropped=" + (frames ? frames.droppedVideoFrames : stats.droppedFrames != null ? stats.droppedFrames : "unknown") +
+      "\nBuffered=" + (video.buffered.length ? video.buffered.end(0).toFixed(1) : "0") +
+      "\nPath=" + (video.currentSrc && video.currentSrc.indexOf("blob:") === 0 ? "MSE/EME when encrypted" : "native/unknown");
   }, 1000);
 }
 
-function loadContent(contentId, platform) {
+function loadContent(contentId, platform, carry, fallback) {
   if (!contentId) {
     setStatus("enter a contentId first", "fail");
     return;
   }
   currentContentId = contentId;
-  setStatus("calling PLAY…", "pending");
-  callService("f1tvPlayTest", { contentId: contentId, platform: platform || undefined })
+  if (!fallback) {
+    requestedProfile = uhdEnabled() ? "uhd" : "web";
+    playbackProfile = requestedProfile;
+    hdFallback = false;
+  }
+  var resume = getResume(contentId);
+  playbackOptions = carry || (resume ? { startTime: resume.t, toast: "Resuming from " + resumeClock(resume.t) } : {});
+  returnedStreamType = "unknown";
+  var ticket = ++contentTicket;
+  ++loadTicket;
+  feedLoading = true;
+  setStatus("calling PLAY (" + playbackProfile + ")…", "pending");
+  // Fully unload the failed stream before retrying; don't leak DRM or buffers.
+  Promise.resolve(player ? player.unload() : null).then(function () {
+    if (ticket !== contentTicket) return null;
+    return callService("f1tvPlayTest", { contentId: contentId, profile: playbackProfile, platform: platform || undefined });
+  })
     .then(function (res) {
+      if (ticket !== contentTicket || !res) return;
       if (!res.returnValue || !res.result || !res.result.play) {
-        setStatus("f1tvPlayTest failed: " + JSON.stringify(res), "fail");
+        if (res.reason === "changed" && fallbackToHD(res)) return;
+        feedLoading = false;
+        setStatus("PLAY failed: " + (res.reason || "unknown"), "fail");
+        showFailure(explainFailure(res));
         return;
       }
       var play = res.result.play;
       if (play.statusCode !== 200 || !play.body || !play.body.resultObj || !play.body.resultObj.tme) {
-        setStatus("PLAY returned " + play.statusCode + ": " + JSON.stringify(play.body), "fail");
+        if (fallbackToHD({ f1Status: play.statusCode })) return;
+        feedLoading = false;
+        setStatus("PLAY returned " + play.statusCode, "fail");
+        showFailure(explainFailure({ reason: "changed" }));
         return;
       }
       var resultObj = play.body.resultObj;
-      var feeds = resultObj.tme.feeds || [];
+      returnedStreamType = typeof resultObj.streamType === "string" && /^[a-zA-Z0-9_-]{1,64}$/.test(resultObj.streamType) ? resultObj.streamType : "unknown";
+      var feeds = (Array.isArray(resultObj.tme.feeds) ? resultObj.tme.feeds : []).filter(function (feed) {
+        return feed && feed.metadata && typeof feed.url === "string" && /^https:\/\//i.test(feed.url);
+      });
       // Live content only: drmType/laURL present -> Widevine-protected.
       // VOD/replay has neither -> drm stays undefined, DRM config cleared.
       var drm = resultObj.laURL
@@ -990,10 +1100,11 @@ function loadContent(contentId, platform) {
       currentStreams = res.result.streams || [];
       // Start on the international broadcast, not F1's own default (the
       // "F1 Live" pre-show feed) - see defaultFeed().
-      var main = defaultFeed(feeds, currentStreams, resultObj.channelId);
+      var main = carry && feeds.filter(function (f) { return String(f.metadata.channel_id) === String(carry.channelId); })[0];
+      main = main || defaultFeed(feeds, currentStreams, resultObj.channelId);
       setStatus(
-        "PLAY OK - streamType=" + resultObj.streamType +
-        (drm ? " (DRM: " + resultObj.drmType + ")" : "") +
+        "PLAY OK - streamType=" + returnedStreamType +
+        (drm ? " (Widevine)" : "") +
         " playing=" + (main ? labelForFeed(main, currentStreams) + " (" + main.metadata.channel_id + ")" : "?") +
         " feeds=" + feeds.length +
         " named=" + currentStreams.length,
@@ -1001,13 +1112,17 @@ function loadContent(contentId, platform) {
       );
       renderFeeds(feeds, main ? main.metadata.channel_id : null, drm);
       // Pick up a replay where it was left (js/resume.js).
-      var resume = getResume(contentId);
       if (main) {
-        playUrl(main.url, drm, resume ? { startTime: resume.t, toast: "Resuming from " + resumeClock(resume.t) } : null);
+        playUrl(main.url, drm, playbackOptions);
+      } else if (!fallbackToHD({})) {
+        feedLoading = false;
+        showFailure(explainFailure({ reason: "changed" }));
       }
     })
     .catch(function (err) {
-      setStatus("service call failed: " + JSON.stringify(err), "fail");
+      if (ticket !== contentTicket) return;
+      feedLoading = false;
+      setStatus("Playback service failed", "fail");
       showFailure(explainFailure(err));
     });
 }
