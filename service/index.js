@@ -195,7 +195,7 @@ service.register("f1tvPlayTest", function (message) {
           // Live content's PLAY response includes a laURL (Widevine license
           // endpoint) the page needs to call directly for EME - and a real
           // captured license request needs BOTH ascendontoken and
-          // entitlementtoken headers, confirmed against MultiViewer's own
+          // entitlementtoken headers, confirmed against iMultiVewer's own
           // traffic during an actual live session. entitlementToken already
           // ships in the PLAY response body itself; ascendontoken doesn't,
           // so it's added here specifically for that purpose.
@@ -318,6 +318,32 @@ service.register("historicTiming", function (message) {
   });
 });
 
+// The track map of a replay (lib/archive.js trackMapAt): the circuit and the
+// cars' samples between two instants on the picture's clock (`from`, `to`, in
+// ms, the same units as the stamps in each sample). The first call for a
+// session answers at once with the circuit and phase "loading" while the
+// position stream downloads; later calls carry samples once it is "ready".
+service.register("historicTrackMap", function (message) {
+  var p = message.payload || {};
+  var at = p.atUtc ? Date.parse(p.atUtc) : NaN;
+  var from = Number(p.from);
+  var to = Number(p.to);
+  if (!at || isNaN(from) || isNaN(to)) {
+    return message.respond({ returnValue: false, errorText: "missing or unreadable 'atUtc', 'from' or 'to'" });
+  }
+  withToken(message, function (token) {
+    archive
+      .trackMapAt(at, from, to, p.circuit, token)
+      .then(function (result) {
+        if (!result) return message.respond({ returnValue: true, available: false });
+        message.respond(Object.assign({ returnValue: true, available: true }, result));
+      })
+      .catch(function (err) {
+        message.respond({ returnValue: false, errorText: String((err && err.message) || err) });
+      });
+  });
+});
+
 // Live timing (M4). Started/stopped on demand from the app when the
 // overlays are toggled on/off, rather than always-on, so the connection
 // only exists while something is actually watching it. Untested against a
@@ -348,7 +374,10 @@ service.register("liveTimingTower", function (message) {
 });
 
 service.register("liveTimingTrackMap", function (message) {
-  message.respond(Object.assign({ returnValue: true, running: livetiming.isRunning() }, livetiming.getTrackMap()));
+  // since: the newest position stamp the app already holds; circuit: the key
+  // of the outline it already holds. Both only trim what is sent back.
+  var p = message.payload || {};
+  message.respond(Object.assign({ returnValue: true, running: livetiming.isRunning() }, livetiming.getTrackMap(Number(p.since) || 0, p.circuit)));
 });
 
 process.on("uncaughtException", function (err) {

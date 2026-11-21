@@ -104,20 +104,45 @@ var MOCK_TOWER = [
   mockDriver(16, 3, "LEC", "E8002D", "+5.887", { lastLap: "1:24.981", compound: "HARD", age: 20, isNew: false }),
 ];
 
-function mockTrackMap() {
-  // A simple ellipse of trail points, standing in for "a session's worth
-  // of accumulated position data" - not a real track shape, just enough
-  // to verify the map overlay's rendering/scaling code with something.
-  var trail = [];
-  for (var i = 0; i < 60; i++) {
-    var t = (i / 60) * Math.PI * 2;
-    trail.push({ x: Math.cos(t) * 200, y: Math.sin(t) * 90 });
-  }
+// The track map as the service now answers it: an outline, and each car's
+// timestamped samples. The "circuit" is a lumpy ellipse (units are tenths of
+// a metre, like the real feed) and the cars lap it in 40s at four samples a
+// second. As on a live session, a sample reaches the app about 3s after its
+// own timestamp, so the map has to line them up by stamp to look right.
+// ?nooutline=1 answers like a circuit F1 has no lap for.
+var MOCK_LAP_MS = 40000;
+var MOCK_SAMPLE_MS = 250;
+var MOCK_ARRIVAL_LAG_MS = 3000;
+
+function mockPoint(u) {
+  var a = u * Math.PI * 2;
+  var r = 1 + 0.12 * Math.sin(3 * a);
+  return { x: Math.round(Math.cos(a) * 1800 * r), y: Math.round(Math.sin(a) * 900 * r) };
+}
+
+function mockTrackMap(since, haveCircuit) {
+  var withOutline = !new URLSearchParams(window.location.search).get("nooutline");
+  var newest = Math.floor((Date.now() - MOCK_ARRIVAL_LAG_MS) / MOCK_SAMPLE_MS) * MOCK_SAMPLE_MS;
+  var from = since > 0 ? since : newest - 90000;
   var drivers = MOCK_TOWER.map(function (d, i) {
-    var t = (i / MOCK_TOWER.length) * Math.PI * 2;
-    return { racingNumber: d.racingNumber, tla: d.tla, teamColour: d.teamColour, x: Math.cos(t) * 200, y: Math.sin(t) * 90 };
+    var samples = [];
+    for (var t = Math.floor(from / MOCK_SAMPLE_MS) * MOCK_SAMPLE_MS + MOCK_SAMPLE_MS; t <= newest; t += MOCK_SAMPLE_MS) {
+      var p = mockPoint(((t / MOCK_LAP_MS) + i * 0.07) % 1);
+      samples.push([t, p.x, p.y]);
+    }
+    return { racingNumber: String(d.racingNumber), tla: d.tla, teamColour: d.teamColour, samples: samples };
   });
-  return { drivers: drivers, trail: trail };
+  var res = { circuitKey: withOutline ? "0" : null, hasOutline: withOutline, newest: newest, drivers: drivers };
+  if (withOutline && haveCircuit !== "0") {
+    var x = [], y = [];
+    for (var k = 0; k < 360; k++) {
+      var q = mockPoint(k / 360);
+      x.push(q.x);
+      y.push(q.y);
+    }
+    res.outline = { x: x, y: y, short: "Mock", year: 2026 };
+  }
+  return res;
 }
 
 // ?tvb=1 previews the TV-browser import already allowed.
@@ -175,9 +200,30 @@ var MOCKS = {
     };
   },
   liveTimingTower: function () { return { returnValue: true, running: true, drivers: MOCK_TOWER }; },
-  liveTimingTrackMap: function () {
-    var m = mockTrackMap();
-    return { returnValue: true, running: true, drivers: m.drivers, trail: m.trail };
+  // A replay's map: the same cars and circuit, for whatever stretch of the
+  // picture's clock is asked for (from/to are the stamps in ms).
+  historicTrackMap: function (p) {
+    var from = Number(p && p.from) || 0;
+    var to = Number(p && p.to) || 0;
+    var res = mockTrackMap(0, p && p.circuit);
+    res.drivers = MOCK_TOWER.map(function (d, i) {
+      var samples = [];
+      for (var t = Math.ceil(from / MOCK_SAMPLE_MS) * MOCK_SAMPLE_MS; t <= to; t += MOCK_SAMPLE_MS) {
+        var q = mockPoint(((t / MOCK_LAP_MS) + i * 0.07) % 1);
+        samples.push([t, q.x, q.y]);
+      }
+      return { racingNumber: String(d.racingNumber), tla: d.tla, teamColour: d.teamColour, samples: samples };
+    });
+    res.available = true;
+    res.phase = "ready";
+    res.returnValue = true;
+    return res;
+  },
+  liveTimingTrackMap: function (p) {
+    var m = mockTrackMap(Number(p && p.since) || 0, p && p.circuit);
+    m.returnValue = true;
+    m.running = true;
+    return m;
   },
 };
 

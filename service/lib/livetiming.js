@@ -6,9 +6,8 @@
 //   - No F1 account auth needed just to negotiate/connect/subscribe -
 //     earlier research assumed auth was required post the SignalR-core
 //     migration; a plain unauthenticated negotiate+connect+subscribe
-//     worked fine. FastF1's own client (github.com/theOehrly/Fast-F1,
-//     fastf1/livetiming/client.py) explicitly supports a no_auth mode too,
-//     but warns it "may only work for some sessions or may only return
+//     worked fine. A widely used open-source client explicitly supports a
+//     no-auth mode too, but warns it "may only work for some sessions or may only return
 //     empty or partial data" when authenticated - worth revisiting if a
 //     real live session comes back suspiciously thin.
 //   - This is the modern ASP.NET Core SignalR wire protocol, NOT classic
@@ -18,7 +17,7 @@
 //     The core protocol's Invocation shape ({type:1, target, arguments})
 //     fixed it immediately - connection stayed open cleanly afterward.
 //     Endpoint (wss://livetiming.formula1.com/signalrcore) matches
-//     FastF1's client exactly.
+//     the one community clients use, exactly.
 //   - negotiate (POST, no body) returns {connectionToken, ...} and
 //     Set-Cookie: AWSALB/AWSALBCORS, which must be replayed as a Cookie
 //     header on the websocket upgrade (ALB stickiness - the connectionToken
@@ -28,9 +27,9 @@
 //   - Handshake: send {"protocol":"json","version":1}+RS immediately after
 //     open; server replies "{}"+RS on success.
 //   - Pushed updates arrive as target "feed" with [topicName, data,
-//     timestamp] arguments - confirmed against FastF1's client, which
-//     registers `self._connection.on("feed", self._on_message)` and
-//     receives exactly that 3-element list shape.
+//     timestamp] arguments - confirmed against an open-source client, which
+//     registers a handler for "feed" and receives exactly that 3-element
+//     list shape.
 //   - Every per-topic data shape assumed in applyTopic() below (TimingData,
 //     DriverList, CarData.z/Position.z after inflating, TrackStatus,
 //     WeatherData, RaceControlMessages) is confirmed correct against a real
@@ -47,8 +46,8 @@
 //     "feed" push - it carries one full initial snapshot per topic in
 //     msg.result, the live equivalent of the static archive's per-topic
 //     keyframe file. This requires the Subscribe invocation to actually
-//     carry an invocationId (FastF1's client sends one via
-//     `on_invocation=self._on_message` specifically to receive this).
+//     carry an invocationId (an open-source client sends one
+//     specifically to receive this).
 //     Previously missing entirely: Subscribe had no invocationId and
 //     type:3 fell into unrecognizedMessageCount, so every topic would only
 //     ever see incremental deltas with no baseline - indistinguishable
@@ -65,6 +64,7 @@
 var https = require("https");
 var WebSocket = require("ws"); // vendored in node_modules/ws - pure JS, zero deps, Node >=10
 var zlib = require("zlib");
+var circuits = require("./circuits");
 
 var HOST = "livetiming.formula1.com";
 var RS = String.fromCharCode(0x1e);
@@ -92,7 +92,8 @@ function emptyState() {
   timingData: {}, // racingNumber -> {position, gapToLeader, interval, ...}
   timingAppData: {}, // racingNumber -> {Stints: [...]} - tyre compound/age history
   carData: {}, // racingNumber -> {rpm, speed, gear, throttle, brake}
-  positionTrail: {}, // racingNumber -> [{x,y}, ...] capped ring buffer
+  positionTrail: {}, // racingNumber -> [{x, y, t}, ...] capped ring buffer; t is a virtual stamp, see applyPositionUpdate
+  positionLagMs: null, // smoothed gap between a position sample's own stamp and its arrival
   raceControlMessages: [],
   // Diagnostics: the topic/argument shape below is a guess (see file
   // header). If it's wrong, everything above silently stays empty with no
@@ -180,19 +181,77 @@ function inflateBase64(b64) {
   }
 }
 
-var MAX_TRAIL_POINTS = 2000; // per driver - enough for a full-lap outline without unbounded growth
+// Per driver: about 4 samples a second, so this is some 8 minutes - more than
+// the app asks for (it lines the map up with a picture that is ~30s behind).
+var MAX_TRAIL_POINTS = 2000;
+
+// "2026-11-20T17:32:52.0861174Z" has seven fractional digits; only three are
+// guaranteed to parse everywhere, and the extra four are worth nothing here.
+function stampMs(ts) {
+  return Date.parse(String(ts).replace(/(\.\d{3})\d+/, "$1"));
+}
+
+// A position message as plain samples: [{t: F1's stamp in ms, cars: [{num, x, y}]}].
+// Shape (confirmed on a live FP1, 2026-11-20): {Position: [{Timestamp,
+// Entries: {racingNumber: {Status, X, Y, Z}}}, ...]}. One message carries
+// about four stamped samples, so all of them are read - this used to take only
+// the first, throwing away three in four. Shared with lib/archive.js, which
+// reads the same messages out of a recorded stream.
+function positionItems(data) {
+  var out = [];
+  var items = data && data.Position;
+  if (!Array.isArray(items)) return out;
+  items.forEach(function (item) {
+    var entries = item && item.Entries;
+    if (!entries) return;
+    var t = stampMs(item.Timestamp);
+    if (isNaN(t)) return;
+    var cars = [];
+    Object.keys(entries).forEach(function (num) {
+      var e = entries[num];
+      if (!e || typeof e.X !== "number" || typeof e.Y !== "number") return;
+      if (e.X === 0 && e.Y === 0) return; // no fix yet
+      cars.push({ num: num, x: e.X, y: e.Y });
+    });
+    out.push({ t: t, cars: cars });
+  });
+  return out;
+}
+
+// Samples are kept on a "virtual" stamp: F1's own stamp plus how late this
+// feed is arriving, smoothed. That puts them on the same clock as the timing
+// tower (whose snapshots are keyed by arrival), so the map and the tower agree
+// about "now" and the viewer's one delay setting suits both. F1's raw stamps
+// would be about 3s earlier than the tower, since a position reaches us about 3s
+// after it was sampled, and would show the cars ahead of the timing. Keeping
+// the sample's own stamp (rather than the arrival time) means the four samples
+// in a message keep their real spacing, so a car glides instead of hopping once
+// a poll. The lag is smoothed, and its step limited, so a slow arrival can't
+// shuffle samples out of order.
+var LAG_SMOOTHING = 0.05;
+var LAG_MAX_STEP_MS = 100;
 
 function applyPositionUpdate(data) {
-  // Best-guess shape: {Position: [{Timestamp, Entries: {racingNumber: {X,Y,Status}}}]}
-  var entries = data && data.Position && data.Position[0] && data.Position[0].Entries;
-  if (!entries) return;
-  Object.keys(entries).forEach(function (num) {
-    var e = entries[num];
-    if (typeof e.X !== "number" || typeof e.Y !== "number") return;
-    if (!state.positionTrail[num]) state.positionTrail[num] = [];
-    var trail = state.positionTrail[num];
-    trail.push({ x: e.X, y: e.Y });
-    if (trail.length > MAX_TRAIL_POINTS) trail.shift();
+  var items = positionItems(data);
+  if (!items.length) return;
+  var measured = Date.now() - items[items.length - 1].t;
+  if (measured >= 0 && measured < 60000) {
+    if (state.positionLagMs === null) {
+      state.positionLagMs = measured;
+    } else {
+      var step = (measured - state.positionLagMs) * LAG_SMOOTHING;
+      state.positionLagMs += Math.max(-LAG_MAX_STEP_MS, Math.min(LAG_MAX_STEP_MS, step));
+    }
+  }
+  var lag = state.positionLagMs === null ? 0 : state.positionLagMs;
+  items.forEach(function (item) {
+    var t = Math.round(item.t + lag);
+    item.cars.forEach(function (c) {
+      if (!state.positionTrail[c.num]) state.positionTrail[c.num] = [];
+      var trail = state.positionTrail[c.num];
+      trail.push({ x: c.x, y: c.y, t: t });
+      if (trail.length > MAX_TRAIL_POINTS) trail.shift();
+    });
   });
 }
 
@@ -281,7 +340,7 @@ function negotiate() {
     // Position.z/CarData.z (car telemetry) came back completely absent -
     // topicCounts stayed at 0 for both - during a real live session, while
     // basic classification topics (TimingData/DriverList) worked fine.
-    // FastF1's own client (github.com/theOehrly/Fast-F1) explicitly warns
+    // An open-source client explicitly warns
     // an unauthenticated connection "may only return empty or partial
     // data" - exactly this symptom. Trying the F1TV login token we already
     // have for PLAY/DRM as the SignalR auth token, since it's the same F1
@@ -365,8 +424,7 @@ function connect() {
             // snapshot per topic in msg.result (e.g. {DriverList: {...},
             // TimingData: {...}, ...}), the live equivalent of the static
             // archive's per-topic "keyframe" file. Confirmed against
-            // FastF1's SignalR-core client (github.com/theOehrly/Fast-F1,
-            // fastf1/livetiming/client.py), which registers exactly this
+            // an open-source SignalR-core client, which registers exactly this
             // completion callback on its own Subscribe call for exactly
             // this reason. Previously this branch didn't exist at all -
             // type:3 fell into unrecognizedMessageCount - so every topic
@@ -523,36 +581,39 @@ function currentTyre(appData) {
   return { compound: last.Compound, age: last.TotalLaps, isNew: last.New === "true" || last.New === true };
 }
 
-function getTrackMap() {
-  var drivers = Object.keys(state.positionTrail).map(function (num) {
-    var trail = state.positionTrail[num];
-    var latest = trail[trail.length - 1];
-    var info = state.driverList[num] || {};
-    return {
-      racingNumber: num,
-      tla: info.Tla,
-      teamColour: info.TeamColour,
-      x: latest ? latest.x : null,
-      y: latest ? latest.y : null,
-      // Each driver's OWN trail, in order - a real live session showed why
-      // this needs to stay separate per driver rather than concatenated:
-      // one flat array of every car's points back-to-back, rendered as a
-      // single connected polyline, draws a spurious line from the last
-      // point of one car's trail to the first point of the next car's -
-      // a "wireframe" of nonsense diagonals across the whole map. The app
-      // now draws one polyline per driver using this instead.
-      trail: trail,
-    };
-  });
-  // Flat merged points too, but ONLY for bounds/auto-fit computation on the
-  // app side (min/max don't care about point order or which car a point
-  // came from) - never render this one as a connected line, for the same
-  // reason as above.
-  var allPoints = [];
+// What the app needs to draw the map at the picture's instant, not at "now":
+// every car's samples since `since` (the newest stamp the app already holds),
+// each as [stamp ms, x, y], plus the circuit's outline the first time it is
+// asked for (`haveCircuit` is the key the app already has an outline for).
+// The picture runs about half a minute behind live (31s measured on a live
+// session, plus the viewer's delay of up to 10s), so a first call (since 0)
+// goes back a minute: far enough to cover that, and about 135KB rather than
+// the 200KB that 90s came to, which is a lot to push over the TV's message bus.
+var FIRST_LOOKBACK_MS = 60 * 1000;
+
+function getTrackMap(since, haveCircuit) {
+  var key = circuits.keyOf(state.sessionInfo);
+  var newest = 0;
   Object.keys(state.positionTrail).forEach(function (num) {
-    allPoints = allPoints.concat(state.positionTrail[num]);
+    var trail = state.positionTrail[num];
+    var last = trail[trail.length - 1];
+    if (last && last.t > newest) newest = last.t;
   });
-  return { drivers: drivers, trail: allPoints };
+  var from = since > 0 ? since : newest - FIRST_LOOKBACK_MS;
+  var drivers = Object.keys(state.positionTrail).map(function (num) {
+    var info = state.driverList[num] || {};
+    var samples = [];
+    var trail = state.positionTrail[num];
+    for (var i = trail.length - 1; i >= 0 && trail[i].t > from; i--) {
+      samples.push([trail[i].t, trail[i].x, trail[i].y]);
+    }
+    samples.reverse();
+    return { racingNumber: num, tla: info.Tla, teamColour: info.TeamColour, samples: samples };
+  });
+  var res = { circuitKey: key, hasOutline: !!circuits.forKey(key), newest: newest, drivers: drivers };
+  var outline = circuits.outlineFor(key, haveCircuit);
+  if (outline) res.outline = outline;
+  return res;
 }
 
 module.exports = {
@@ -572,5 +633,8 @@ module.exports = {
   // For lib/archive.js: a private state to replay an archive into, and the
   // reducer/getters bound to it.
   emptyState: emptyState,
+  // For lib/archive.js: the same position-message reader the live feed uses.
+  inflateBase64: inflateBase64,
+  positionItems: positionItems,
   withState: withState,
 };

@@ -49,7 +49,7 @@ var BASE = "/static/";
 // Everything the timing tower reads. Deliberately not Position.z or
 // CarData.z: those are ~9MB per race and only the track map wants them, so
 // they'd cost every viewer a long download for an overlay that may never be
-// opened. The map stays live-only until that's worth solving separately.
+// opened. The map loads Position.z itself, on demand (trackMapAt below).
 var TOPICS = [
   "SessionInfo",
   "DriverList",
@@ -360,8 +360,215 @@ function towerAt(atUtcMs, token) {
   });
 }
 
+// --- the track map of a replay -------------------------------------------------
+//
+// The map wants Position.z, which is about 8MB for a race and is not part of
+// the tower's session (see TOPICS), so it is loaded here, only when someone
+// opens the map on a replay, and without the tower's 50MB: just Heartbeat (the
+// clock anchor), SessionInfo (which circuit) and DriverList (names and colours)
+// beside it. Those are small and answer at once, so the app has the outline to
+// draw while the stream downloads in the background.
+//
+// The stream is never decoded whole. Its lines are indexed by their clock and
+// the few seconds the app asks for are decoded on demand, so a race costs the
+// 8MB of text and nothing more.
+//
+// Samples come out on the same "virtual" clock as live ones (see
+// livetiming.js applyPositionUpdate): F1's stamp plus how late the feed ran,
+// here measured from the recording, on the same anchor the tower uses. So on a
+// replay the map and the tower agree about when things happened, and the one
+// delay setting suits both.
+
+var circuits = require("./circuits");
+var poscache = require("./poscache");
+
+var POSITION_FILE = "Position.z.jsonStream";
+var POSITION_RETRY_MS = 15000; // after a failed download, before trying again
+var LAG_PROBES = 60; // lines read to measure how late the feed ran
+var DEFAULT_LAG_MS = 3000; // if none can be read: what a live session measured
+
+var mapSessions = {}; // session path -> record; only the latest is kept
+var mapLoading = {};
+
+// A leftover from an earlier session's download goes at start-up.
+poscache.prune();
+
+function lowerBound(times, x) {
+  var lo = 0, hi = times.length;
+  while (lo < hi) {
+    var mid = (lo + hi) >> 1;
+    if (times[mid] < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+// The lines' samples, decoded: [{t, cars}] (see livetiming.positionItems).
+function decodeLine(body) {
+  try {
+    return lt.positionItems(lt.inflateBase64(JSON.parse(body)));
+  } catch (e) {
+    return [];
+  }
+}
+
+// How many ms after a sample's own stamp its line reached the recorder,
+// on the anchor's clock: the median over lines spread through the stream.
+function measureLag(positions, anchorMs) {
+  var lags = [];
+  var n = positions.times.length;
+  var step = Math.max(1, Math.floor(n / LAG_PROBES));
+  for (var k = 0; k < n; k += step) {
+    var items = decodeLine(positions.bodies[k]);
+    if (!items.length) continue;
+    lags.push(positions.times[k] + anchorMs - items[items.length - 1].t);
+  }
+  if (!lags.length) return DEFAULT_LAG_MS;
+  lags.sort(function (a, b) { return a - b; });
+  return lags[Math.floor(lags.length / 2)];
+}
+
+// Heartbeat, SessionInfo and DriverList: a second or two, and enough to
+// anchor the clock, name the circuit and label the cars.
+function mapSessionFor(path) {
+  if (mapSessions[path]) return Promise.resolve(mapSessions[path]);
+  if (mapLoading[path]) return mapLoading[path];
+  var base = BASE + path;
+  var streams = {};
+  var chain = ["Heartbeat", "SessionInfo", "DriverList"].reduce(function (p, topic) {
+    return p.then(function () {
+      return getWithRetry(base + topic + ".jsonStream").then(function (res) {
+        if (res) streams[topic] = parseStream(res.body);
+      });
+    });
+  }, Promise.resolve());
+  mapLoading[path] = chain
+    .then(function () {
+      var anchor = anchorFrom(streams.Heartbeat);
+      if (anchor === null) throw new Error("no usable heartbeat in " + path);
+      var scratch = lt.emptyState();
+      lt.withState(scratch, function () {
+        ["SessionInfo", "DriverList"].forEach(function (topic) {
+          var stream = streams[topic];
+          if (!stream) return;
+          stream.bodies.forEach(function (body) {
+            try { lt.__applyTopic(topic, JSON.parse(body)); } catch (e) { /* a bad line tells us nothing */ }
+          });
+        });
+      });
+      var rec = {
+        path: path,
+        anchorMs: anchor,
+        circuitKey: circuits.keyOf(scratch.sessionInfo),
+        drivers: scratch.driverList,
+        positions: null,
+        lagMs: null,
+        phase: "idle", // idle -> loading -> ready | missing | failed
+        promise: null,
+        error: null,
+        failedAt: 0,
+      };
+      // Only the session being watched stays in memory.
+      Object.keys(mapSessions).forEach(function (other) { delete mapSessions[other]; });
+      mapSessions[path] = rec;
+      delete mapLoading[path];
+      return rec;
+    })
+    .catch(function (err) {
+      delete mapLoading[path];
+      throw err;
+    });
+  return mapLoading[path];
+}
+
+// The stream itself: from disk if it's there, else downloaded (and kept for
+// next time, see poscache.js). Runs in the background; the phase says where it is.
+function loadPositions(rec) {
+  rec.phase = "loading";
+  var cached = poscache.read(rec.path);
+  var fetched =
+    cached !== null
+      ? Promise.resolve(cached)
+      : getWithRetry(BASE + rec.path + POSITION_FILE).then(function (res) {
+          if (!res) return null;
+          poscache.write(rec.path, res.body);
+          return res.body;
+        });
+  rec.promise = fetched
+    .then(function (text) {
+      if (text === null) {
+        // F1 recorded no positions for this session (some support races, early sessions).
+        rec.phase = "missing";
+        return;
+      }
+      rec.positions = parseStream(text);
+      rec.lagMs = measureLag(rec.positions, rec.anchorMs);
+      rec.phase = "ready";
+      console.log(
+        "[archive] positions for " + rec.path + " - " + rec.positions.times.length + " lines, feed ran " +
+        Math.round(rec.lagMs) + "ms late" + (cached !== null ? " (from disk)" : "")
+      );
+    })
+    .catch(function (err) {
+      rec.phase = "failed";
+      rec.error = String((err && err.message) || err);
+      rec.failedAt = Date.now();
+      rec.promise = null;
+    });
+}
+
+// Every car's samples with a virtual stamp in [fromV, toV], as [stamp, x, y].
+function windowSamples(rec, fromV, toV) {
+  var P = rec.positions;
+  // A line reaches us at U = its clock + the anchor, and the samples in it
+  // sit on the virtual clock up to a second or so before U.
+  var lo = lowerBound(P.times, fromV - rec.anchorMs - 500);
+  var byCar = {};
+  for (var k = lo; k < P.times.length && P.times[k] + rec.anchorMs <= toV + 2500; k++) {
+    decodeLine(P.bodies[k]).forEach(function (item) {
+      var v = Math.round(item.t + rec.lagMs);
+      if (v < fromV || v > toV) return;
+      item.cars.forEach(function (c) {
+        (byCar[c.num] = byCar[c.num] || []).push([v, c.x, c.y]);
+      });
+    });
+  }
+  return Object.keys(byCar).map(function (num) {
+    var info = rec.drivers[num] || {};
+    var samples = byCar[num].sort(function (a, b) { return a[0] - b[0]; });
+    return { racingNumber: num, tla: info.Tla, teamColour: info.TeamColour, samples: samples };
+  });
+}
+
+// The map's answer for a replay: which circuit (and its outline, once), and the
+// cars' samples between two instants on the picture's clock. `atUtcMs` only
+// picks the session. Null when no archived session covers it. While the stream
+// is still coming down, `phase` is "loading" and there are no samples yet.
+function trackMapAt(atUtcMs, fromV, toV, haveCircuit, token) {
+  authToken = token || null;
+  return findSession(atUtcMs).then(function (found) {
+    if (!found) return null;
+    return mapSessionFor(found.path).then(function (rec) {
+      if (rec.phase === "failed" && Date.now() - rec.failedAt > POSITION_RETRY_MS) rec.phase = "idle";
+      if (rec.phase === "idle") loadPositions(rec);
+      var res = {
+        session: { path: found.path, meeting: found.meeting, name: found.name, type: found.type },
+        circuitKey: rec.circuitKey,
+        hasOutline: !!circuits.forKey(rec.circuitKey),
+        phase: rec.phase,
+        drivers: rec.phase === "ready" ? windowSamples(rec, fromV, toV) : [],
+      };
+      var outline = circuits.outlineFor(rec.circuitKey, haveCircuit);
+      if (outline) res.outline = outline;
+      if (rec.phase === "failed") res.errorText = rec.error;
+      return res;
+    });
+  });
+}
+
 module.exports = {
   findSession: findSession,
   loadSession: loadSession,
   towerAt: towerAt,
+  trackMapAt: trackMapAt,
 };

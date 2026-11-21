@@ -127,7 +127,12 @@ Promise.all(
       );
     });
 
-    var map = lt.getTrackMap();
+    // since = 1 asks for every sample held, not just the last minute and a half.
+    var map = lt.getTrackMap(1);
+    map.trail = [];
+    map.drivers.forEach(function (d) {
+      d.samples.forEach(function (s) { map.trail.push({ x: s[1], y: s[2] }); });
+    });
     console.log(
       "\nTrack map - " + map.trail.length + " accumulated position points, " + map.drivers.length + " drivers with a last-known position"
     );

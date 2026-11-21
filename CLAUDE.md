@@ -36,9 +36,15 @@ anything from `.dev/`.
   - `lib/setupServer.js`: the LAN sign-in page with its pairing code
   - `lib/failure.js`: sorts F1 failures into reasons
   - `lib/livetiming.js`, `lib/archive.js`: live and replay timing
+  - `lib/circuits.js`, `data/circuits.json`: each circuit's outline and its
+    finish line and sector ends, in the position feed's own coordinates
+  - `lib/poscache.js`: keeps the replay being watched's position stream on
+    disk (only the latest), so reopening the map doesn't download it again
 - `dev/`: mocks and helpers injected by the dev server. Outside `app/`, so
   they never ship.
-- `scripts/`: `package.sh`, `deploy.sh`, `dev-server.js`, `replay-test.js`.
+- `scripts/`: `package.sh`, `deploy.sh`, `dev-server.js`, `replay-test.js`, and
+  the circuit tools (`live-view.js`, `build-circuits.js`, `build-markers.js`,
+  `check-circuits.js`, with `lib/archive.js`; see "The track map" below).
 
 ## Working without the TV
 
@@ -81,9 +87,31 @@ The script's header covers setup. Two traps:
   `service/lib/auth.js`).
 - **One video at a time.** The LG C5 decodes only one protected stream
   cleanly, so multiview was built and removed.
-- **The track map is drawn from telemetry**, with no pre-drawn outline. A
-  bundled circuit backdrop was tried and dropped; `app/js/overlays.js`'s
-  header explains why.
+- **The track map draws each circuit from one real lap** of F1's own position
+  feed (`service/data/circuits.json`, all 26 circuits F1 lists), so it is
+  complete from the first frame, and the cars sit on it in the same
+  coordinates. A bundled SVG backdrop was tried and dropped because it was in
+  other coordinates; `app/js/overlays.js`'s header explains why. The feed is
+  already north-up in metres, so nothing is rotated. A circuit with no entry
+  falls back to drawing the trails the cars leave.
+  - **Rebuilding it** needs the signed-in dev server's token (the archive
+    refuses requests without one). `node scripts/build-circuits.js` cuts the
+    outlines, `node scripts/build-markers.js` adds the finish line and sector
+    ends, and `CIRCUIT_REFERENCE_URL=<folder of reference GeoJSON files>
+    node scripts/check-circuits.js` checks each outline against the real shape
+    of its circuit (all 26 are within 4-21 m). Downloads are cached in
+    `.dev/position-cache/`.
+  - **Positions are on the tower's clock,** not F1's raw one: each sample's own
+    stamp plus how late the feed arrives (about 3 s live, measured from the
+    recording on a replay). So the map and the tower agree and one Timing
+    delay setting suits both. At the instant the tower shows a lap completing,
+    the car is within a few metres of the finish line.
+  - **Replays** load the position stream on demand (about 8MB, with the
+    circuit answered first so the outline shows while it comes down) and keep
+    the latest one on disk.
+  - **Watching a live session on a PC:** `node scripts/live-view.js` starts
+    the dev server, opens the app with the tower and map open (no picture),
+    and prints a status line every few seconds.
 - **Replays are unencrypted HLS. Live is Widevine** through the TV's own
   CDM, with the licence request carrying the viewer's own tokens.
 - **The release workflow's toolbox:** the webosbrew packages are named
@@ -109,9 +137,13 @@ The script's header covers setup. Two traps:
 - **Back presses may accumulate** after opening the timing tower several
   times. This wasn't reproducible from a resting state; retry with the tower
   left open.
-- **The track map is live-only.** Replays would need the archive's
-  `Position.z`, about 9MB per session. `service/lib/archive.js` has the
-  plumbing; the download cost is what stopped it.
+- **The track map is untested on the TV.** It was checked on the PC against
+  real live sessions (a practice, a qualifying), a recorded race played through
+  the real service, and a real replay. Check the live map on the TV on the next
+  race weekend, and that the "picture N s behind live" figure in the Timing
+  delay menu reads sensibly (it is how far the picture clock trails live; if
+  timing arrives early, compare it with another timing tool's figure for the
+  same stream).
 - **Subscription vs region errors** are told apart by the wording of F1's
   message, which is a guess (`service/lib/failure.js`). Correct it if a real
   refusal is ever captured.
