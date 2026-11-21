@@ -1,10 +1,10 @@
 // F1TV REST client. Undocumented API, reverse-engineered from a mix of
-// community projects (F1OpenViewer, f1viewer's Go client) and a real HAR
-// capture of MultiViewer's own traffic against a live account - see plan
-// doc for sources and the full trail of what was tried and why.
+// community projects and a real HAR capture of another client's own traffic
+// against a live account - see plan doc for sources and the full trail of
+// what was tried and why.
 //
 // We deliberately do NOT do server-side email/password login: an older
-// client (f1viewer) documents that path as blocked by F1TV's anti-bot
+// community client documents that path as blocked by F1TV's anti-bot
 // checks, and the current community-standard workaround is to log in in a
 // real browser (which passes the bot check because a human is actually
 // there) and reuse the resulting subscriptionToken JWT from the
@@ -13,8 +13,8 @@
 //
 // Confirmed against real responses:
 //   - LOGIN_STATUS is "R", not "L" - ENTITLEMENT is lenient about this
-//     segment (both worked), but LOCATION only succeeds with "R", matching
-//     f1viewer's Go client which uses "R" throughout.
+//     segment (both worked), but LOCATION only succeeds with "R", as a
+//     community client does throughout.
 //   - PLAY needs playAPIVersion "3.0" (matches /config's
 //     apiConfig.playAPIVersion) and a player=player_tm query param.
 //   - PLAY's real success shape:
@@ -76,7 +76,7 @@
 //
 // SOLVED the "Failed to evaluate stream rule" (ACN_2008) mystery: PLAY
 // needs an `X-F1-Device-Info` header, missing from every attempt above.
-// Diffing our request against MultiViewer's real captured one (identical
+// Diffing our request against a real captured one (identical
 // contentId/channelId/platform, everything else the same) found it -
 // without it, "stream rule" apparently can't even be evaluated. Confirmed
 // by adding the exact captured value verbatim: WEB_HLS immediately went
@@ -102,7 +102,7 @@ var PAGE_API_VERSION = "2.0";
 var USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
   "Chrome/150.0.7871.46 Safari/537.36";
-// Verbatim from a real captured MultiViewer request against a working
+// Verbatim from a real captured web-client request against a working
 // account - see the SOLVED note above for why this can't just be any
 // well-formed value.
 var DEVICE_INFO =
